@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Install shfmt
+        run: |
+          mkdir -p ~/bin
+          curl -sSL "https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_linux_amd64" -o ~/bin/shfmt
+          chmod +x ~/bin/shfmt
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Install Bats
+        run: |
+          curl -sSL https://github.com/bats-core/bats-core/archive/refs/tags/v1.11.0.tar.gz | tar xz -C /tmp
+          sudo /tmp/bats-core-1.11.0/install.sh /usr/local
+
+      - name: Lint
+        run: make lint
+
+      - name: Format check
+        run: |
+          make format
+          git diff --exit-code || (echo "Run 'make format' and commit"; exit 1)
+
+      - name: Test
+        run: make test
