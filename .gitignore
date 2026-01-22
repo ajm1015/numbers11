@@ -1,0 +1,47 @@
+# Logs
+*.log
+Logs/
+**/Logs/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# PowerShell
+*.ps1.bak
+*.ps1.old
+
+# Intune Win32 packages
+*.intunewin
+IntuneWinAppUtil.exe
+
+# Source installers (keep structure, ignore binaries)
+Deployments/*/Source/*.exe
+Deployments/*/Source/*.msi
+Deployments/*/Source/*.zip
+Deployments/*/Source/*.msix
+Deployments/*/Source/*.appx
+
+# Keep Source directories but ignore contents
+!Deployments/*/Source/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Testing
+testing/

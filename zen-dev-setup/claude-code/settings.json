@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow_file_read": true,
+    "allow_file_write": true,
+    "allow_shell": true,
+    "allow_network": false,
+    "auto_approve_reads": true,
+    "auto_approve_writes": false
+  },
+  "context": {
+    "max_files": 100,
+    "max_file_size_kb": 500,
+    "include_patterns": [
+      "**/*.ps1",
+      "**/*.psm1",
+      "**/*.psd1",
+      "**/*.sh",
+      "**/*.bash",
+      "**/*.zsh",
+      "**/*.py",
+      "**/*.json",
+      "**/*.yaml",
+      "**/*.yml",
+      "**/*.xml",
+      "**/*.md",
+      "**/*.txt",
+      "**/CLAUDE.md"
+    ],
+    "exclude_patterns": [
+      "node_modules/**",
+      ".git/**",
+      "*.log",
+      "dist/**",
+      "build/**",
+      "*.intunewin",
+      ".DS_Store",
+      "__pycache__/**",
+      "*.pyc"
+    ]
+  },
+  "behavior": {
+    "auto_compact_context": true,
+    "show_token_usage": true,
+    "stream_responses": true
+  },
+  "appearance": {
+    "theme": "auto"
+  }
+}

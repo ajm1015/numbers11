@@ -1,0 +1,289 @@
+[
+    // =========================================================================
+    // AI WORKFLOW SHORTCUTS
+    // =========================================================================
+    
+    // Note: Cursor defaults that we keep:
+    // Cmd+K         - Inline AI edit
+    // Cmd+L         - Open AI chat
+    // Cmd+Shift+L   - Add selection to chat
+    // Tab           - Accept AI suggestion
+    // Cmd+Shift+K   - Inline edit with selection
+    
+    // =========================================================================
+    // NAVIGATION - Keyboard-First Workflow
+    // =========================================================================
+    
+    // Quick file open (most used)
+    {
+        "key": "cmd+p",
+        "command": "workbench.action.quickOpen"
+    },
+    
+    // Command palette
+    {
+        "key": "cmd+shift+p",
+        "command": "workbench.action.showCommands"
+    },
+    
+    // Symbol search in file
+    {
+        "key": "cmd+shift+o",
+        "command": "workbench.action.gotoSymbol"
+    },
+    
+    // Symbol search in workspace
+    {
+        "key": "cmd+t",
+        "command": "workbench.action.showAllSymbols"
+    },
+    
+    // Go to line
+    {
+        "key": "ctrl+g",
+        "command": "workbench.action.gotoLine"
+    },
+    
+    // =========================================================================
+    // PANEL TOGGLES
+    // =========================================================================
+    
+    // Toggle sidebar
+    {
+        "key": "cmd+b",
+        "command": "workbench.action.toggleSidebarVisibility"
+    },
+    
+    // Toggle terminal
+    {
+        "key": "cmd+j",
+        "command": "workbench.action.terminal.toggleTerminal"
+    },
+    
+    // Toggle problems panel
+    {
+        "key": "cmd+shift+m",
+        "command": "workbench.actions.view.problems"
+    },
+    
+    // Zen mode
+    {
+        "key": "cmd+k z",
+        "command": "workbench.action.toggleZenMode"
+    },
+    
+    // Focus editor (escape from sidebar/terminal)
+    {
+        "key": "escape",
+        "command": "workbench.action.focusActiveEditorGroup",
+        "when": "!editorTextFocus && !inputFocus"
+    },
+    
+    // =========================================================================
+    // EDITOR SPLITS - For Comparing AI Output
+    // =========================================================================
+    
+    // Split editor right
+    {
+        "key": "cmd+\\",
+        "command": "workbench.action.splitEditor"
+    },
+    
+    // Split editor down
+    {
+        "key": "cmd+shift+\\",
+        "command": "workbench.action.splitEditorDown"
+    },
+    
+    // Navigate between splits
+    {
+        "key": "cmd+alt+left",
+        "command": "workbench.action.focusPreviousGroup"
+    },
+    {
+        "key": "cmd+alt+right",
+        "command": "workbench.action.focusNextGroup"
+    },
+    
+    // Close active editor
+    {
+        "key": "cmd+w",
+        "command": "workbench.action.closeActiveEditor"
+    },
+    
+    // =========================================================================
+    // CODE ACTIONS
+    // =========================================================================
+    
+    // Format document
+    {
+        "key": "cmd+shift+f",
+        "command": "editor.action.formatDocument",
+        "when": "editorTextFocus && !editorReadonly"
+    },
+    
+    // Quick fix (essential after AI generates code)
+    {
+        "key": "cmd+.",
+        "command": "editor.action.quickFix",
+        "when": "editorHasCodeActionsProvider && textInputFocus && !editorReadonly"
+    },
+    
+    // Rename symbol
+    {
+        "key": "f2",
+        "command": "editor.action.rename",
+        "when": "editorHasRenameProvider && editorTextFocus && !editorReadonly"
+    },
+    
+    // Go to definition
+    {
+        "key": "f12",
+        "command": "editor.action.revealDefinition",
+        "when": "editorHasDefinitionProvider && editorTextFocus"
+    },
+    
+    // Peek definition (inline)
+    {
+        "key": "alt+f12",
+        "command": "editor.action.peekDefinition",
+        "when": "editorHasDefinitionProvider && editorTextFocus"
+    },
+    
+    // Find all references
+    {
+        "key": "shift+f12",
+        "command": "editor.action.goToReferences",
+        "when": "editorHasReferenceProvider && editorTextFocus"
+    },
+    
+    // =========================================================================
+    // SELECTION
+    // =========================================================================
+    
+    // Expand selection (great for selecting blocks to send to AI)
+    {
+        "key": "ctrl+shift+cmd+right",
+        "command": "editor.action.smartSelect.expand",
+        "when": "editorTextFocus"
+    },
+    
+    // Shrink selection
+    {
+        "key": "ctrl+shift+cmd+left",
+        "command": "editor.action.smartSelect.shrink",
+        "when": "editorTextFocus"
+    },
+    
+    // Select all occurrences of word
+    {
+        "key": "cmd+shift+l",
+        "command": "editor.action.selectHighlights",
+        "when": "editorFocus"
+    },
+    
+    // Add cursor at next occurrence
+    {
+        "key": "cmd+d",
+        "command": "editor.action.addSelectionToNextFindMatch",
+        "when": "editorFocus"
+    },
+    
+    // =========================================================================
+    // SEARCH
+    // =========================================================================
+    
+    // Find in file
+    {
+        "key": "cmd+f",
+        "command": "actions.find",
+        "when": "editorFocus || editorIsOpen"
+    },
+    
+    // Find and replace in file
+    {
+        "key": "cmd+alt+f",
+        "command": "editor.action.startFindReplaceAction",
+        "when": "editorFocus || editorIsOpen"
+    },
+    
+    // Search in workspace
+    {
+        "key": "cmd+shift+f",
+        "command": "workbench.action.findInFiles",
+        "when": "!editorFocus"
+    },
+    
+    // =========================================================================
+    // TERMINAL
+    // =========================================================================
+    
+    // New terminal
+    {
+        "key": "cmd+shift+t",
+        "command": "workbench.action.terminal.new"
+    },
+    
+    // Split terminal
+    {
+        "key": "cmd+shift+d",
+        "command": "workbench.action.terminal.split",
+        "when": "terminalFocus"
+    },
+    
+    // Clear terminal
+    {
+        "key": "cmd+k",
+        "command": "workbench.action.terminal.clear",
+        "when": "terminalFocus"
+    },
+    
+    // =========================================================================
+    // GIT
+    // =========================================================================
+    
+    // Open source control
+    {
+        "key": "ctrl+shift+g",
+        "command": "workbench.view.scm"
+    },
+    
+    // Stage current file
+    {
+        "key": "cmd+shift+s",
+        "command": "git.stage",
+        "when": "editorTextFocus"
+    },
+    
+    // =========================================================================
+    // EXPLORER (when sidebar is open)
+    // =========================================================================
+    
+    // New file
+    {
+        "key": "a",
+        "command": "explorer.newFile",
+        "when": "filesExplorerFocus && !inputFocus"
+    },
+    
+    // New folder
+    {
+        "key": "shift+a",
+        "command": "explorer.newFolder",
+        "when": "filesExplorerFocus && !inputFocus"
+    },
+    
+    // Rename
+    {
+        "key": "r",
+        "command": "renameFile",
+        "when": "filesExplorerFocus && !inputFocus"
+    },
+    
+    // Delete
+    {
+        "key": "d",
+        "command": "deleteFile",
+        "when": "filesExplorerFocus && !inputFocus"
+    }
+]

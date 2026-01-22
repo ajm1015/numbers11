@@ -1,0 +1,134 @@
+# ============================================================================
+# Starship Prompt Configuration
+# Minimal, informative, fast
+# ============================================================================
+
+# Timeout for commands (ms)
+command_timeout = 500
+
+# Format - clean and minimal
+format = """
+$directory\
+$git_branch\
+$git_status\
+$python\
+$nodejs\
+$character"""
+
+# Right side prompt
+right_format = """$cmd_duration"""
+
+# Don't add newline at start
+add_newline = false
+
+# ============================================================================
+# Directory
+# ============================================================================
+
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+style = "bold blue"
+format = "[$path]($style) "
+home_symbol = "~"
+
+[directory.substitutions]
+"Documents" = "󰈙"
+"Downloads" = ""
+"Projects" = ""
+
+# ============================================================================
+# Git
+# ============================================================================
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+style = "bold purple"
+symbol = " "
+
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
+style = "bold red"
+conflicted = "="
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
+untracked = "?${count}"
+stashed = "󰏗"
+modified = "!${count}"
+staged = "+${count}"
+renamed = "»"
+deleted = "✘"
+
+# ============================================================================
+# Languages (minimal - only show when relevant)
+# ============================================================================
+
+[python]
+format = '[${symbol}${pyenv_prefix}(${version})]($style) '
+style = "yellow"
+symbol = " "
+detect_files = ["requirements.txt", "pyproject.toml", "setup.py", ".python-version"]
+
+[nodejs]
+format = "[$symbol($version)]($style) "
+style = "green"
+symbol = " "
+detect_files = ["package.json", ".nvmrc"]
+
+# Disabled by default - enable if needed
+[rust]
+disabled = true
+
+[golang]
+disabled = true
+
+[java]
+disabled = true
+
+# ============================================================================
+# Prompt Character
+# ============================================================================
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+vimcmd_symbol = "[❮](bold green)"
+
+# ============================================================================
+# Command Duration (right side)
+# ============================================================================
+
+[cmd_duration]
+min_time = 2000  # Show if command takes > 2s
+format = "[$duration]($style)"
+style = "bold yellow"
+show_milliseconds = false
+
+# ============================================================================
+# Disabled Modules (for speed)
+# ============================================================================
+
+[aws]
+disabled = true
+
+[azure]
+disabled = true
+
+[gcloud]
+disabled = true
+
+[kubernetes]
+disabled = true
+
+[docker_context]
+disabled = true
+
+[package]
+disabled = true
+
+[battery]
+disabled = true
+
+[time]
+disabled = true

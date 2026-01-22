@@ -1,0 +1,91 @@
+# ============================================================================
+# Ghostty Configuration
+# ~/.config/ghostty/config
+# ============================================================================
+
+# === Typography ===
+font-family = "JetBrains Mono"
+font-family-bold = "JetBrains Mono Bold"
+font-family-italic = "JetBrains Mono Italic"
+font-family-bold-italic = "JetBrains Mono Bold Italic"
+font-size = 14
+adjust-cell-height = 15%
+
+# === Color Scheme: Catppuccin Mocha ===
+theme = catppuccin-mocha
+
+# === Window ===
+window-decoration = false
+macos-titlebar-style = hidden
+window-padding-x = 20
+window-padding-y = 16
+window-save-state = always
+
+# Subtle transparency for zen feel
+background-opacity = 0.95
+unfocused-split-opacity = 0.85
+
+# === Cursor ===
+cursor-style = bar
+cursor-style-blink = true
+cursor-color = #f5e0dc
+
+# === Shell Integration ===
+shell-integration = zsh
+shell-integration-features = cursor,sudo,title
+
+# === macOS Specific ===
+macos-option-as-alt = left
+macos-window-shadow = false
+
+# === Clipboard ===
+copy-on-select = clipboard
+clipboard-paste-protection = false
+
+# === Scrollback ===
+scrollback-limit = 100000
+
+# === Keybindings ===
+# Splits
+keybind = cmd+d=new_split:right
+keybind = cmd+shift+d=new_split:down
+
+# Navigate splits
+keybind = cmd+shift+h=goto_split:left
+keybind = cmd+shift+l=goto_split:right
+keybind = cmd+shift+k=goto_split:top
+keybind = cmd+shift+j=goto_split:bottom
+
+# Resize splits
+keybind = cmd+ctrl+h=resize_split:left,20
+keybind = cmd+ctrl+l=resize_split:right,20
+keybind = cmd+ctrl+k=resize_split:up,20
+keybind = cmd+ctrl+j=resize_split:down,20
+
+
+# Close
+keybind = cmd+w=close_surface
+
+# Clear screen (like Cmd+K in iTerm)
+keybind = cmd+k=clear_screen
+
+# Zoom split (toggle fullscreen for current split)
+keybind = cmd+shift+return=toggle_split_zoom
+
+# Quick tab switching
+keybind = cmd+1=goto_tab:1
+keybind = cmd+2=goto_tab:2
+keybind = cmd+3=goto_tab:3
+keybind = cmd+4=goto_tab:4
+keybind = cmd+5=goto_tab:5
+
+# Font size
+keybind = cmd+plus=increase_font_size:1
+keybind = cmd+minus=decrease_font_size:1
+keybind = cmd+0=reset_font_size
+
+# Scrolling
+keybind = cmd+up=scroll_page_up
+keybind = cmd+down=scroll_page_down
+keybind = cmd+home=scroll_to_top
+keybind = cmd+end=scroll_to_bottom

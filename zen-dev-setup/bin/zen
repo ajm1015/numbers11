@@ -1,0 +1,51 @@
+#!/bin/bash
+# ============================================================================
+# Zen Focus Mode Toggle
+# Hides all apps except development tools, enables Do Not Disturb
+# ============================================================================
+
+FOCUS_FILE="$HOME/.zen-focus-active"
+
+activate_focus() {
+    echo "🧘 Activating focus mode..."
+    
+    # Try to enable Do Not Disturb via shortcuts (macOS 12+)
+    shortcuts run "Turn On Focus" 2>/dev/null || true
+    
+    # Hide all apps except dev tools
+    osascript << 'EOF' 2>/dev/null
+tell application "System Events"
+    set visibleApps to {"Cursor", "Ghostty", "Terminal", "WezTerm", "kitty", "iTerm2"}
+    repeat with proc in (every process whose visible is true)
+        if name of proc is not in visibleApps then
+            set visible of proc to false
+        end if
+    end repeat
+end tell
+EOF
+    
+    touch "$FOCUS_FILE"
+    echo "🧘 Focus mode activated"
+    echo "   Hidden: All apps except terminal and editor"
+    echo "   Run 'zen' again to deactivate"
+}
+
+deactivate_focus() {
+    echo "🌅 Deactivating focus mode..."
+    
+    # Turn off Do Not Disturb
+    shortcuts run "Turn Off Focus" 2>/dev/null || true
+    
+    # Show all apps
+    osascript -e 'tell application "System Events" to set visible of every process to true' 2>/dev/null || true
+    
+    rm -f "$FOCUS_FILE"
+    echo "🌅 Focus mode deactivated"
+}
+
+# Toggle based on current state
+if [[ -f "$FOCUS_FILE" ]]; then
+    deactivate_focus
+else
+    activate_focus
+fi
