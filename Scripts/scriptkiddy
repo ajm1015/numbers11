@@ -19,6 +19,17 @@
 
 set -euo pipefail
 
+# Require bash 4.0+ for associative arrays
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+    echo "error: scriptkiddy requires bash 4.0 or later" >&2
+    echo "Your version: ${BASH_VERSION}" >&2
+    echo "" >&2
+    echo "On macOS, install newer bash with:" >&2
+    echo "  brew install bash" >&2
+    echo "Then run with: /opt/homebrew/bin/bash $0 [args]" >&2
+    exit 1
+fi
+
 readonly VERSION="3.0.0"
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/scriptkiddy"
@@ -214,20 +225,44 @@ ensure_dir() {
     [[ -d "$1" ]] || mkdir -p "$1"
 }
 
+# Escape special characters for JSON strings
+escape_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"      # backslash
+    s="${s//\"/\\\"}"      # double quote
+    s="${s//$'\n'/\\n}"    # newline
+    s="${s//$'\r'/\\r}"    # carriage return
+    s="${s//$'\t'/\\t}"    # tab
+    echo "$s"
+}
+
+# Escape special characters for XML content
+escape_xml() {
+    local s="$1"
+    # Note: & in replacement string must be escaped with \ in bash
+    s="${s//&/\&amp;}"     # ampersand (must be first!)
+    s="${s//</\&lt;}"      # less than
+    s="${s//>/\&gt;}"      # greater than
+    s="${s//\"/\&quot;}"   # double quote
+    s="${s//\'/\&apos;}"   # single quote
+    echo "$s"
+}
+
 # Cross-platform SHA-512 password hashing
+# Returns hash on stdout, exit 0 on success, exit 1 on failure
 hash_password() {
     local password="$1"
     local salt hash
 
     salt=$(LC_ALL=C tr -dc 'a-zA-Z0-9./' </dev/urandom 2>/dev/null | head -c 16 || openssl rand -base64 12 | tr -dc 'a-zA-Z0-9./' | head -c 16)
 
-    # Try openssl first
+    # Method 1: openssl passwd -6 (OpenSSL 1.1.1+, not LibreSSL)
     if hash=$(printf '%s' "$password" | openssl passwd -6 -salt "$salt" -stdin 2>/dev/null) && [[ -n "$hash" && "$hash" == '$6$'* ]]; then
         echo "$hash"
         return 0
     fi
 
-    # Try mkpasswd
+    # Method 2: mkpasswd (common on Linux)
     if command -v mkpasswd &>/dev/null; then
         hash=$(printf '%s' "$password" | mkpasswd -m sha-512 -S "$salt" --stdin 2>/dev/null)
         if [[ -n "$hash" && "$hash" == '$6$'* ]]; then
@@ -236,12 +271,16 @@ hash_password() {
         fi
     fi
 
-    # Try python3
+    # Method 3: python3 with passlib (cross-platform, recommended)
     if command -v python3 &>/dev/null; then
         hash=$(printf '%s' "$password" | python3 -c "
-import sys, crypt
-password = sys.stdin.read()
-print(crypt.crypt(password, '\$6\$$salt\$'))
+import sys
+try:
+    from passlib.hash import sha512_crypt
+    password = sys.stdin.read()
+    print(sha512_crypt.using(rounds=5000).hash(password))
+except ImportError:
+    sys.exit(1)
 " 2>/dev/null)
         if [[ -n "$hash" && "$hash" == '$6$'* ]]; then
             echo "$hash"
@@ -249,7 +288,24 @@ print(crypt.crypt(password, '\$6\$$salt\$'))
         fi
     fi
 
-    # Try perl
+    # Method 4: python3 with crypt module (deprecated in 3.11, removed in 3.13+)
+    if command -v python3 &>/dev/null; then
+        hash=$(printf '%s' "$password" | python3 -c "
+import sys
+try:
+    import crypt
+    password = sys.stdin.read()
+    print(crypt.crypt(password, '\$6\$$salt\$'))
+except (ImportError, OSError):
+    sys.exit(1)
+" 2>/dev/null)
+        if [[ -n "$hash" && "$hash" == '$6$'* ]]; then
+            echo "$hash"
+            return 0
+        fi
+    fi
+
+    # Method 5: perl (works on Linux, macOS perl doesn't support $6$)
     if command -v perl &>/dev/null; then
         hash=$(HASH_PASSWORD="$password" HASH_SALT="$salt" perl -e '
             my $pass = $ENV{"HASH_PASSWORD"};
@@ -262,7 +318,38 @@ print(crypt.crypt(password, '\$6\$$salt\$'))
         fi
     fi
 
-    die "No working password hashing method found. Install openssl (1.1.1+), python3, perl, or mkpasswd."
+    # Method 6: SHA-256 fallback (openssl -5)
+    if hash=$(printf '%s' "$password" | openssl passwd -5 -salt "$salt" -stdin 2>/dev/null) && [[ -n "$hash" && "$hash" == '$5$'* ]]; then
+        log_warn "Using SHA-256 instead of SHA-512 (install passlib: pip3 install passlib)"
+        echo "$hash"
+        return 0
+    fi
+
+    # Method 7: MD5 fallback (weak but widely supported)
+    local salt_short="${salt:0:8}"
+    if hash=$(printf '%s' "$password" | openssl passwd -1 -salt "$salt_short" -stdin 2>/dev/null) && [[ -n "$hash" && "$hash" == '$1$'* ]]; then
+        log_warn "Using MD5 password hash (weak). Install passlib for SHA-512: pip3 install passlib"
+        echo "$hash"
+        return 0
+    fi
+
+    # No method worked
+    log_error "No working password hashing method found."
+    log_error "Install one of: passlib (pip3 install passlib), openssl 1.1.1+, or mkpasswd"
+    return 1
+}
+
+# Wrapper that dies on hash failure (for use outside subshells)
+require_hash_password() {
+    local password="$1"
+    local hash
+    if ! hash=$(hash_password "$password"); then
+        die "Failed to hash password"
+    fi
+    if [[ -z "$hash" ]]; then
+        die "Password hash is empty"
+    fi
+    echo "$hash"
 }
 
 get_distro_format() {
@@ -759,11 +846,11 @@ load_profile() {
 
 generate_preseed() {
     local password_hash
-    password_hash=$(hash_password "$PASSWORD")
+    password_hash=$(require_hash_password "$PASSWORD")
 
     local root_password_hash=""
     if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
-        root_password_hash=$(hash_password "$ROOT_PASSWORD")
+        root_password_hash=$(require_hash_password "$ROOT_PASSWORD")
     fi
 
     local mirror_hostname
@@ -911,7 +998,7 @@ PRESEED
 
 generate_autoinstall() {
     local password_hash
-    password_hash=$(hash_password "$PASSWORD")
+    password_hash=$(require_hash_password "$PASSWORD")
 
     local packages="[]"
     local pkg_list=""
@@ -1006,11 +1093,11 @@ AUTOINSTALL
 
 generate_kickstart() {
     local password_hash
-    password_hash=$(hash_password "$PASSWORD")
+    password_hash=$(require_hash_password "$PASSWORD")
 
     local root_password_hash=""
     if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
-        root_password_hash=$(hash_password "$ROOT_PASSWORD")
+        root_password_hash=$(require_hash_password "$ROOT_PASSWORD")
     fi
 
     cat <<KICKSTART
@@ -1156,12 +1243,25 @@ KICKSTART
 
 generate_archinstall() {
     local password_hash
-    password_hash=$(hash_password "$PASSWORD")
+    password_hash=$(require_hash_password "$PASSWORD")
 
     local root_password_hash="null"
     if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
-        root_password_hash="\"$(hash_password "$ROOT_PASSWORD")\""
+        root_password_hash="\"$(require_hash_password "$ROOT_PASSWORD")\""
     fi
+
+    # Escape values for JSON
+    local j_hostname j_username j_disk j_timezone j_keyboard j_locale j_enc_pass j_static_ip j_gateway j_dns
+    j_hostname=$(escape_json "$HOSTNAME")
+    j_username=$(escape_json "$USERNAME")
+    j_disk=$(escape_json "$DISK")
+    j_timezone=$(escape_json "$TIMEZONE")
+    j_keyboard=$(escape_json "$KEYBOARD")
+    j_locale=$(escape_json "$LOCALE")
+    j_enc_pass=$(escape_json "$ENCRYPTION_PASSWORD")
+    j_static_ip=$(escape_json "$STATIC_IP")
+    j_gateway=$(escape_json "$STATIC_GATEWAY")
+    j_dns=$(escape_json "${STATIC_DNS%% *}")
 
     # Build packages array
     local packages="\"base\", \"base-devel\", \"linux\", \"linux-firmware\", \"sudo\""
@@ -1196,7 +1296,7 @@ generate_archinstall() {
         "config_type": "default_layout",
         "device_modifications": [
             {
-                "device": "${DISK}",
+                "device": "${j_disk}",
                 "partitions": [],
                 "wipe": true
             }
@@ -1204,15 +1304,15 @@ generate_archinstall() {
     },
     "disk_encryption": $([ "$USE_ENCRYPTION" -eq 1 ] && echo "{
         \"encryption_type\": \"luks\",
-        \"partitions\": [\"${DISK}\"],
-        \"encryption_password\": \"${ENCRYPTION_PASSWORD}\"
+        \"partitions\": [\"${j_disk}\"],
+        \"encryption_password\": \"${j_enc_pass}\"
     }" || echo "null"),
-    "hostname": "${HOSTNAME}",
+    "hostname": "${j_hostname}",
     "kernels": ["linux"],
     "locale_config": {
-        "kb_layout": "${KEYBOARD}",
+        "kb_layout": "${j_keyboard}",
         "sys_enc": "UTF-8",
-        "sys_lang": "${LOCALE}"
+        "sys_lang": "${j_locale}"
     },
     "mirror_config": {
         "custom_mirrors": [],
@@ -1221,9 +1321,9 @@ generate_archinstall() {
     "network_config": $([ "$NETWORK_TYPE" == "static" ] && echo "{
         \"type\": \"manual\",
         \"iface\": null,
-        \"ip\": \"${STATIC_IP}\",
-        \"gateway\": \"${STATIC_GATEWAY}\",
-        \"dns\": [\"${STATIC_DNS%% *}\"]
+        \"ip\": \"${j_static_ip}\",
+        \"gateway\": \"${j_gateway}\",
+        \"dns\": [\"${j_dns}\"]
     }" || echo "{\"type\": \"nm\"}"),
     "no_pkg_lookups": false,
     "ntp": true,
@@ -1240,11 +1340,11 @@ generate_archinstall() {
     "script": null,
     "silent": true,
     "swap": $([ "$SWAP_SIZE" -gt 0 ] && echo "true" || echo "false"),
-    "timezone": "${TIMEZONE}",
+    "timezone": "${j_timezone}",
     "uki": false,
     "!users": [
         {
-            "username": "${USERNAME}",
+            "username": "${j_username}",
             "!password": "${password_hash}",
             "sudo": true
         }
@@ -1261,7 +1361,23 @@ ARCHINSTALL
 
 generate_autoyast() {
     local password_hash
-    password_hash=$(hash_password "$PASSWORD")
+    password_hash=$(require_hash_password "$PASSWORD")
+
+    # Escape values for XML
+    local x_hostname x_domain x_username x_fullname x_keyboard x_timezone x_locale x_disk x_filesystem
+    x_hostname=$(escape_xml "$HOSTNAME")
+    x_domain=$(escape_xml "$DOMAIN")
+    x_username=$(escape_xml "$USERNAME")
+    x_fullname=$(escape_xml "${FULLNAME:-$USERNAME}")
+    x_keyboard=$(escape_xml "$KEYBOARD")
+    x_timezone=$(escape_xml "$TIMEZONE")
+    x_locale=$(escape_xml "$LOCALE")
+    x_disk=$(escape_xml "$DISK")
+    x_filesystem=$(escape_xml "$FILESYSTEM")
+    local x_static_ip x_static_netmask x_static_gateway
+    x_static_ip=$(escape_xml "$STATIC_IP")
+    x_static_netmask=$(escape_xml "$STATIC_NETMASK")
+    x_static_gateway=$(escape_xml "$STATIC_GATEWAY")
 
     cat <<AUTOYAST
 <?xml version="1.0"?>
@@ -1280,24 +1396,24 @@ generate_autoyast() {
   </general>
 
   <keyboard>
-    <keymap>${KEYBOARD}</keymap>
+    <keymap>${x_keyboard}</keymap>
   </keyboard>
 
   <language>
-    <language>${LOCALE%%.*}</language>
-    <languages>${LOCALE%%.*}</languages>
+    <language>${x_locale%%.*}</language>
+    <languages>${x_locale%%.*}</languages>
   </language>
 
   <timezone>
     <hwclock>UTC</hwclock>
-    <timezone>${TIMEZONE}</timezone>
+    <timezone>${x_timezone}</timezone>
   </timezone>
 
   <networking>
     <keep_install_network config:type="boolean">true</keep_install_network>
     <dns>
-      <hostname>${HOSTNAME}</hostname>
-      <domain>${DOMAIN}</domain>
+      <hostname>${x_hostname}</hostname>
+      <domain>${x_domain}</domain>
     </dns>
 AUTOYAST
 
@@ -1307,8 +1423,8 @@ AUTOYAST
       <interface>
         <bootproto>static</bootproto>
         <device>eth0</device>
-        <ipaddr>${STATIC_IP}</ipaddr>
-        <netmask>${STATIC_NETMASK}</netmask>
+        <ipaddr>${x_static_ip}</ipaddr>
+        <netmask>${x_static_netmask}</netmask>
         <startmode>auto</startmode>
       </interface>
     </interfaces>
@@ -1317,7 +1433,7 @@ AUTOYAST
       <routes config:type="list">
         <route>
           <destination>default</destination>
-          <gateway>${STATIC_GATEWAY}</gateway>
+          <gateway>${x_static_gateway}</gateway>
           <device>eth0</device>
         </route>
       </routes>
@@ -1330,18 +1446,18 @@ AUTOYAST
 
   <users config:type="list">
     <user>
-      <username>${USERNAME}</username>
+      <username>${x_username}</username>
       <user_password>${password_hash}</user_password>
       <encrypted config:type="boolean">true</encrypted>
-      <fullname>${FULLNAME:-$USERNAME}</fullname>
-      <home>/home/${USERNAME}</home>
+      <fullname>${x_fullname}</fullname>
+      <home>/home/${x_username}</home>
       <shell>/bin/bash</shell>
     </user>
 AUTOYAST
 
     if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
         local root_hash
-        root_hash=$(hash_password "$ROOT_PASSWORD")
+        root_hash=$(require_hash_password "$ROOT_PASSWORD")
         cat <<AUTOYAST
     <user>
       <username>root</username>
@@ -1356,7 +1472,7 @@ AUTOYAST
 
   <partitioning config:type="list">
     <drive>
-      <device>${DISK}</device>
+      <device>${x_disk}</device>
       <initialize config:type="boolean">true</initialize>
       <use>all</use>
       <partitions config:type="list">
@@ -1387,7 +1503,7 @@ AUTOYAST
         <partition>
           <mount>/</mount>
           <size>max</size>
-          <filesystem config:type="symbol">${FILESYSTEM}</filesystem>
+          <filesystem config:type="symbol">${x_filesystem}</filesystem>
         </partition>
       </partitions>
     </drive>
