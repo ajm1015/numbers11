@@ -1,0 +1,500 @@
+---
+alwaysApply: true
+---
+
+**Story ID:** CURSOR-AGENT-001  
+**Epic:** AI-Augmented Development Environment  
+**Priority:** P0  
+**Estimated Complexity:** High  
+**Author:** Systems Administrator / Developer  
+**Version:** 1.0.0  
+
+---
+
+## Executive Summary
+
+As a systems administrator developing enterprise deployment scripts and packaging solutions, I need a deterministic, well-architected system prompting framework for Claude agents within Cursor IDE that produces consistent, auditable, and production-grade outputs aligned with enterprise IT standards.
+
+---
+
+## User Story
+
+**As a** systems administrator and developer working in enterprise device management,  
+**I want** a structured system prompt architecture for Claude agents in Cursor,  
+**So that** I can achieve deterministic, context-aware code generation that adheres to organizational standards, produces audit-compliant outputs, and accelerates complex scripting workflows across PowerShell, Bash, and Python.
+
+---
+
+## Acceptance Criteria
+
+### Functional Requirements
+
+1. **Context Injection Consistency**
+   - System prompts must persist across Cursor sessions via `.cursorrules` or workspace-level configurations
+   - Agent behavior must remain stable across context window resets
+   - Prompt inheritance must cascade: Global → Workspace → File-type → Inline
+
+2. **Domain-Specific Output Fidelity**
+   - Generated PowerShell must conform to `PSScriptAnalyzer` severity levels 1-3
+   - Bash scripts must pass `shellcheck` with zero warnings at `-S style` level
+   - All outputs must include structured logging hooks compatible with enterprise SIEM ingestion
+
+3. **Agentic Workflow Integration**
+   - Agent must understand multi-file context relationships (e.g., detection scripts paired with remediation scripts)
+   - Must support iterative refinement loops without context degradation
+   - Must handle tool-use patterns: file creation, terminal execution, diff application
+
+4. **Audit and Compliance Alignment**
+   - All generated code must include header blocks with: author, version, purpose, changelog stub
+   - Sensitive operations must include explicit confirmation patterns or `-WhatIf` support
+   - Error handling must follow fail-safe patterns with structured exit codes
+
+---
+
+## Technical Specification
+
+### 1. Cursor Configuration Architecture
+
+#### 1.1 File Hierarchy and Precedence
+
+```
+~/.cursor/
+├── settings.json              # Global IDE settings
+├── globalRules.md             # Global system prompt (all workspaces)
+│
+/workspace/
+├── .cursorrules               # Workspace-level system prompt (highest precedence)
+├── .cursor/
+│   ├── rules/
+│   │   ├── powershell.md      # Language-specific rules
+│   │   ├── bash.md
+│   │   └── python.md
+│   └── context/
+│       ├── standards.md       # Org standards reference
+│       └── templates/         # Code templates for injection
+```
+
+#### 1.2 Precedence Resolution Order
+
+```
+1. Inline @rules mentions (highest)
+2. .cursorrules (workspace root)
+3. .cursor/rules/{language}.md
+4. ~/.cursor/globalRules.md (lowest)
+```
+
+### 2. System Prompt Engineering Framework
+
+#### 2.1 Structural Schema
+
+System prompts should follow a deterministic schema to ensure consistent parsing by the Claude model:
+
+```markdown
+# ROLE DEFINITION
+<role>
+You are an expert {domain} engineer specializing in {specializations}.
+Your outputs are consumed by {audience} and must meet {compliance_standard}.
+</role>
+
+# BEHAVIORAL CONSTRAINTS
+<constraints>
+- {constraint_1}
+- {constraint_2}
+- {constraint_n}
+</constraints>
+
+# OUTPUT SPECIFICATIONS
+<output_spec>
+Format: {format_type}
+Structure: {structure_requirements}
+Validation: {validation_hooks}
+</output_spec>
+
+# DOMAIN CONTEXT
+<context>
+{Injected organizational standards, API references, or architectural decisions}
+</context>
+
+# EXAMPLES (Few-Shot Priming)
+<examples>
+<example type="positive">
+{Well-formed output example}
+</example>
+<example type="negative">
+{Anti-pattern with explanation}
+</example>
+</examples>
+```
+
+#### 2.2 Token Budget Allocation Strategy
+
+Given Claude's context window, allocate tokens strategically:
+
+| Component | Allocation | Rationale |
+|-----------|------------|-----------|
+| Role Definition | 5-8% | Establishes baseline behavior |
+| Constraints | 10-15% | Hard guardrails on output |
+| Output Spec | 10-12% | Format determinism |
+| Domain Context | 40-50% | The "knowledge base" injection |
+| Examples | 15-20% | Few-shot priming for quality |
+| Buffer | 10-15% | Conversation/iteration headroom |
+
+### 3. Reference Implementation: Enterprise Sysadmin Profile
+
+#### 3.1 Master `.cursorrules` Template
+
+```markdown
+# SYSTEM PROMPT: Enterprise Systems Administration Agent
+
+<role>
+You are a senior systems administrator and automation engineer specializing in:
+- Microsoft Intune Win32 app packaging and deployment
+- Kandji macOS MDM scripting and custom app deployment  
+- PowerShell 5.1/7.x cross-platform automation
+- Bash/Zsh scripting for macOS and Linux
+- Python tooling for API integrations and data transformation
+
+Your outputs are deployed to production enterprise environments managing 10,000+ endpoints.
+All code must be audit-ready, idempotent, and fail-safe.
+</role>
+
+<constraints>
+ABSOLUTE_RULES:
+- Never use `Invoke-Expression` or `eval` patterns without explicit user confirmation
+- Never hardcode credentials, tokens, or secrets—always use environment variables or secure vaults
+- Never assume execution context—always validate runtime environment explicitly
+- All file operations must use absolute paths resolved at runtime
+- All network operations must include timeout and retry logic
+- Error messages must never expose internal paths, usernames, or system topology
+
+STYLISTIC_RULES:
+- Use parameter splatting for commands with >3 parameters
+- Prefer explicit parameter names over positional arguments
+- Use approved verbs only (Get-Verb | Select-Object -ExpandProperty Verb)
+- Comment density: 1 comment block per logical section, not per line
+- Variable naming: PascalCase for PowerShell, snake_case for Bash/Python
+</constraints>
+
+<output_spec>
+FORMAT: Production-ready script with structured components
+
+REQUIRED_SECTIONS:
+1. Header block (metadata, version, synopsis)
+2. Parameter/argument definition with validation
+3. Initialization (logging setup, environment validation)
+4. Core logic (modular functions, single-responsibility)
+5. Error handling (try/catch with structured exit codes)
+6. Cleanup/finalization (transcript stop, temp file removal)
+
+EXIT_CODE_SCHEMA:
+- 0: Success
+- 1: General failure
+- 2: Invalid parameters
+- 3: Dependency not met
+- 4: Permission denied
+- 5: Network/connectivity failure
+- 10-99: Custom application-specific codes
+
+LOGGING_FORMAT:
+[YYYY-MM-DD HH:MM:SS] [LEVEL] [FUNCTION] Message
+Levels: DEBUG, INFO, WARN, ERROR, FATAL
+</output_spec>
+
+<context>
+DEPLOYMENT_TARGETS:
+- Intune: Win32 apps via .intunewin packages, detection/requirement scripts
+- Kandji: Custom Apps, Audit Scripts, Remediation Scripts
+- Direct execution: Scheduled tasks, login scripts, SCCM task sequences
+
+TOOLCHAIN_VERSIONS:
+- PowerShell: 5.1 (Windows), 7.4+ (cross-platform)
+- Bash: 3.2+ (macOS default), 5.x (Linux)
+- Python: 3.11+ with type hints required
+- IntuneWinAppUtil: Latest stable
+
+ORGANIZATIONAL_STANDARDS:
+- All scripts must support -Verbose and -WhatIf where applicable
+- Transcript logging mandatory for scripts modifying system state
+- Detection scripts must return clean stdout (exit code only for Intune)
+- 120-character line limit for readability in PR reviews
+</context>
+
+<examples>
+<example type="positive" language="powershell">
+<![CDATA[
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+    Installs Application X with enterprise configuration.
+.DESCRIPTION
+    Performs silent installation of Application X v2.1.0, applies
+    organization-specific configuration, and validates installation state.
+.NOTES
+    Author: IT Automation Team
+    Version: 1.0.0
+    Date: 2025-01-15
+    Intune Detection: Pair with Detect-ApplicationX.ps1
+#>
+
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter()]
+    [ValidateSet('Install', 'Uninstall')]
+    [string]$Mode = 'Install',
+    
+    [Parameter()]
+    [string]$LogPath = "$env:ProgramData\Logs\ApplicationX"
+)
+
+#region Initialization
+$ErrorActionPreference = 'Stop'
+$Script:ExitCode = 0
+
+function Write-Log {
+    param([string]$Message, [ValidateSet('INFO','WARN','ERROR')]$Level = 'INFO')
+    $Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $LogMessage = "[$Timestamp] [$Level] $Message"
+    
+    switch ($Level) {
+        'ERROR' { Write-Error $LogMessage }
+        'WARN'  { Write-Warning $LogMessage }
+        default { Write-Verbose $LogMessage }
+    }
+    
+    if ($LogPath) {
+        Add-Content -Path (Join-Path $LogPath 'install.log') -Value $LogMessage
+    }
+}
+
+# Validate execution context
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Log -Message 'Script requires administrative privileges' -Level ERROR
+    exit 4
+}
+#endregion
+
+#region Main Logic
+try {
+    if ($PSCmdlet.ShouldProcess('ApplicationX', $Mode)) {
+        Write-Log -Message "Beginning $Mode operation"
+        # Core installation logic here
+    }
+}
+catch {
+    Write-Log -Message "Fatal error: $($_.Exception.Message)" -Level ERROR
+    $Script:ExitCode = 1
+}
+finally {
+    Write-Log -Message "Script completed with exit code $Script:ExitCode"
+    exit $Script:ExitCode
+}
+#endregion
+]]>
+</example>
+
+<example type="negative" language="powershell">
+# BAD: Missing error handling, hardcoded paths, no logging
+$installer = "C:\Users\admin\Downloads\app.exe"
+& $installer /silent
+# Assumes success, no validation, no audit trail
+</example>
+</examples>
+
+<agent_directives>
+WHEN_GENERATING_CODE:
+1. Ask clarifying questions if deployment target (Intune/Kandji/direct) is ambiguous
+2. Default to the most restrictive/safe implementation
+3. Include inline TODO comments for sections requiring environment-specific values
+4. Provide companion detection scripts when generating installation scripts
+5. Suggest unit test patterns for complex logic
+
+WHEN_REVIEWING_CODE:
+1. Check for ABSOLUTE_RULES violations first
+2. Validate error handling coverage
+3. Assess idempotency (can script run twice without side effects?)
+4. Verify logging captures sufficient forensic detail
+
+WHEN_UNCERTAIN:
+1. State assumptions explicitly before generating code
+2. Offer alternative implementations with tradeoff analysis
+3. Recommend testing strategies for edge cases
+</agent_directives>
+```
+
+### 4. Advanced Patterns
+
+#### 4.1 Dynamic Context Injection via @-Mentions
+
+Cursor supports inline context injection. Structure your workspace to leverage this:
+
+```
+/project
+├── @standards/
+│   ├── error-codes.md         # @error-codes for exit code reference
+│   ├── logging-format.md      # @logging for log schema
+│   └── security-baseline.md   # @security for hardening checks
+├── @templates/
+│   ├── intune-install.ps1     # @intune-template for scaffolding
+│   └── kandji-audit.sh        # @kandji-template for scaffolding
+```
+
+Usage in conversation:
+```
+"Create an Intune installation script for 7-Zip. 
+Reference @intune-template for structure and @error-codes for exit handling."
+```
+
+#### 4.2 Multi-Agent Workflow Orchestration
+
+For complex tasks, chain specialized prompts:
+
+```
+Agent 1: Architect
+- Generates high-level design document
+- Defines module boundaries and interfaces
+- Output: architecture.md
+
+Agent 2: Implementer  
+- Consumes architecture.md as context
+- Generates implementation code
+- Output: src/*.ps1
+
+Agent 3: Validator
+- Runs static analysis (PSScriptAnalyzer, shellcheck)
+- Generates test cases
+- Output: tests/*.Tests.ps1, validation-report.md
+```
+
+#### 4.3 Iterative Refinement Protocol
+
+For complex scripts, use a structured refinement loop:
+
+```
+ITERATION 1: Scaffold
+- Generate structure with TODO placeholders
+- Validate against output_spec
+
+ITERATION 2: Implement
+- Fill core logic
+- Maintain TODO for edge cases
+
+ITERATION 3: Harden
+- Add comprehensive error handling
+- Implement retry/fallback patterns
+
+ITERATION 4: Document
+- Generate inline documentation
+- Create README with usage examples
+
+ITERATION 5: Test
+- Generate Pester/BATS test cases
+- Include edge case coverage
+```
+
+### 5. Validation and Quality Gates
+
+#### 5.1 Automated Validation Pipeline
+
+```bash
+#!/bin/bash
+# validate-agent-output.sh
+
+set -euo pipefail
+
+FILE="$1"
+EXT="${FILE##*.}"
+
+case "$EXT" in
+    ps1)
+        pwsh -Command "Invoke-ScriptAnalyzer -Path '$FILE' -Severity Error,Warning"
+        ;;
+    sh|bash)
+        shellcheck -S warning "$FILE"
+        ;;
+    py)
+        ruff check "$FILE"
+        mypy "$FILE" --strict
+        ;;
+esac
+
+# Header validation
+if ! head -20 "$FILE" | grep -qE '(\.SYNOPSIS|Author:|#!/)'; then
+    echo "ERROR: Missing required header block"
+    exit 1
+fi
+
+echo "PASSED: $FILE"
+```
+
+#### 5.2 Pre-Commit Integration
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: validate-scripts
+        name: Validate Agent-Generated Scripts
+        entry: ./scripts/validate-agent-output.sh
+        language: script
+        files: \.(ps1|sh|py)$
+```
+
+### 6. Metrics and Observability
+
+Track agent effectiveness with structured metrics:
+
+| Metric | Target | Measurement |
+|--------|--------|-------------|
+| First-pass lint success | >85% | Scripts passing validation without edits |
+| Context retention | >90% | Agent recalls constraints across turns |
+| Idempotency compliance | 100% | Scripts safe for repeated execution |
+| Exit code schema adherence | 100% | All scripts use defined exit codes |
+| Header block presence | 100% | All outputs include metadata |
+
+---
+
+## Dependencies
+
+- Cursor IDE (latest stable)
+- Claude API access (via Cursor integration)
+- PowerShell 7.4+ (local validation)
+- ShellCheck 0.9+ (local validation)
+- PSScriptAnalyzer 1.21+ (local validation)
+
+## Risks and Mitigations
+
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Context window overflow | Medium | High | Token budget allocation, chunked context |
+| Prompt injection via file content | Low | High | Sanitize injected context, review @-mentions |
+| Model version drift | Medium | Medium | Pin model version in Cursor settings if available |
+| Inconsistent output between sessions | Medium | Medium | Maximize explicit constraints, minimize ambiguity |
+
+---
+
+## Appendix A: Quick Reference Card
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ CURSOR CLAUDE AGENT QUICK REFERENCE                             │
+├─────────────────────────────────────────────────────────────────┤
+│ Config Files:                                                   │
+│   .cursorrules          → Workspace system prompt               │
+│   .cursor/rules/*.md    → Language-specific rules               │
+│                                                                 │
+│ Precedence: Inline > .cursorrules > rules/*.md > globalRules   │
+│                                                                 │
+│ Effective Prompting:                                            │
+│   ✓ Explicit constraints beat implicit expectations             │
+│   ✓ Positive examples > negative examples                       │
+│   ✓ Structured output specs reduce variance                     │
+│   ✓ Domain context injection improves relevance                 │
+│                                                                 │
+│ Anti-Patterns:                                                  │
+│   ✗ Vague instructions ("make it good")                         │
+│   ✗ Conflicting constraints                                     │
+│   ✗ Over-stuffed context (quality > quantity)                   │
+│   ✗ Missing validation hooks                                    │
+└─────────────────────────────────────────────────────────────────┘
+```

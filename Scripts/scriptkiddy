@@ -352,6 +352,37 @@ require_hash_password() {
     echo "$hash"
 }
 
+# Convert dotted quad netmask to CIDR prefix length
+# e.g., 255.255.255.0 -> 24, 255.255.0.0 -> 16
+netmask_to_cidr() {
+    local netmask="$1"
+    local cidr=0
+    local octet
+
+    # Handle already-CIDR input (just a number)
+    if [[ "$netmask" =~ ^[0-9]+$ && "$netmask" -ge 0 && "$netmask" -le 32 ]]; then
+        echo "$netmask"
+        return 0
+    fi
+
+    IFS='.' read -ra octets <<< "$netmask"
+    for octet in "${octets[@]}"; do
+        case "$octet" in
+            255) ((cidr += 8)) ;;
+            254) ((cidr += 7)) ;;
+            252) ((cidr += 6)) ;;
+            248) ((cidr += 5)) ;;
+            240) ((cidr += 4)) ;;
+            224) ((cidr += 3)) ;;
+            192) ((cidr += 2)) ;;
+            128) ((cidr += 1)) ;;
+            0)   ;;
+            *)   log_warn "Invalid netmask octet: $octet"; echo "24"; return 1 ;;
+        esac
+    done
+    echo "$cidr"
+}
+
 get_distro_format() {
     echo "${DISTRO_FORMATS[$DISTRO]:-unknown}"
 }
@@ -788,6 +819,12 @@ list_profiles() {
 
 save_profile() {
     local name="$1"
+
+    # Sanitize profile name: reject path traversal and absolute paths
+    if [[ "$name" == */* || "$name" == *..* || "$name" == -* || -z "$name" ]]; then
+        die "Invalid profile name: '${name}' (must not contain '/', '..', or start with '-')"
+    fi
+
     ensure_dir "$PROFILES_DIR"
     local profile_file="${PROFILES_DIR}/${name}"
 
@@ -805,27 +842,39 @@ HOSTNAME="${HOSTNAME}"
 DOMAIN="${DOMAIN}"
 USERNAME="${USERNAME}"
 FULLNAME="${FULLNAME}"
+PASSWORD="${PASSWORD}"
+ROOT_PASSWORD="${ROOT_PASSWORD}"
+ENABLE_ROOT="${ENABLE_ROOT}"
 DISK="${DISK}"
 FILESYSTEM="${FILESYSTEM}"
 BOOT_MODE="${BOOT_MODE}"
 USE_LVM="${USE_LVM}"
 USE_ENCRYPTION="${USE_ENCRYPTION}"
+ENCRYPTION_PASSWORD="${ENCRYPTION_PASSWORD}"
 SWAP_SIZE="${SWAP_SIZE}"
+EFI_SIZE="${EFI_SIZE}"
+BOOT_SIZE="${BOOT_SIZE}"
 BTRFS_SUBVOLS="${BTRFS_SUBVOLS}"
 DE="${DE}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES}"
+PACKAGE_GROUPS="${PACKAGE_GROUPS}"
 NETWORK_TYPE="${NETWORK_TYPE}"
 STATIC_IP="${STATIC_IP}"
 STATIC_NETMASK="${STATIC_NETMASK}"
 STATIC_GATEWAY="${STATIC_GATEWAY}"
 STATIC_DNS="${STATIC_DNS}"
 WIFI_SSID="${WIFI_SSID}"
+WIFI_PASSWORD="${WIFI_PASSWORD}"
 SSH_ENABLE="${SSH_ENABLE}"
 SSH_PORT="${SSH_PORT}"
 SSH_PERMIT_ROOT="${SSH_PERMIT_ROOT}"
 SSH_PUBKEY="${SSH_PUBKEY}"
+SSH_PUBKEY_FILE="${SSH_PUBKEY_FILE}"
 ENABLE_FIREWALL="${ENABLE_FIREWALL}"
-ENABLE_ROOT="${ENABLE_ROOT}"
+ENABLE_SELINUX="${ENABLE_SELINUX}"
+SELINUX_MODE="${SELINUX_MODE}"
+POST_SCRIPT="${POST_SCRIPT}"
+POST_SCRIPT_FILE="${POST_SCRIPT_FILE}"
 PROFILE
 
     log_info "Profile saved: ${profile_file}"
@@ -833,7 +882,21 @@ PROFILE
 
 load_profile() {
     local name="$1"
+
+    # Sanitize profile name: reject path traversal and absolute paths
+    if [[ "$name" == */* || "$name" == *..* || "$name" == -* || -z "$name" ]]; then
+        die "Invalid profile name: '${name}' (must not contain '/', '..', or start with '-')"
+    fi
+
     local profile_file="${PROFILES_DIR}/${name}"
+
+    # Verify resolved path is within profiles directory (defense in depth)
+    local resolved_path
+    resolved_path="$(cd "$PROFILES_DIR" 2>/dev/null && realpath -m "$name" 2>/dev/null)" || true
+    if [[ -z "$resolved_path" || "$resolved_path" != "${PROFILES_DIR}/"* ]]; then
+        die "Invalid profile path: ${name}"
+    fi
+
     [[ -f "$profile_file" ]] || die "Profile not found: ${name}"
     log_info "Loading profile: ${name}"
     # shellcheck source=/dev/null
@@ -1052,6 +1115,8 @@ AUTOINSTALL
     fi
 
     if [[ "$NETWORK_TYPE" == "static" ]]; then
+        local cidr_prefix
+        cidr_prefix=$(netmask_to_cidr "$STATIC_NETMASK")
         cat <<AUTOINSTALL
   network:
     version: 2
@@ -1060,7 +1125,7 @@ AUTOINSTALL
         match:
           name: "en*"
         addresses:
-          - ${STATIC_IP}/${STATIC_NETMASK}
+          - ${STATIC_IP}/${cidr_prefix}
         gateway4: ${STATIC_GATEWAY}
         nameservers:
           addresses: [${STATIC_DNS// /, }]
@@ -1587,7 +1652,9 @@ HOSTNAMEOPTS="-n ${HOSTNAME}"
 ALPINE
 
     if [[ "$NETWORK_TYPE" == "static" ]]; then
-        echo "INTERFACESOPTS=\"eth0:${STATIC_IP}/${STATIC_NETMASK}:${STATIC_GATEWAY}\""
+        local cidr_prefix
+        cidr_prefix=$(netmask_to_cidr "$STATIC_NETMASK")
+        echo "INTERFACESOPTS=\"eth0:${STATIC_IP}/${cidr_prefix}:${STATIC_GATEWAY}\""
     else
         echo "INTERFACESOPTS=\"auto lo
 iface lo inet loopback
@@ -1755,7 +1822,7 @@ VOID
 
 # Create user
 useradd -m -G wheel -s /bin/bash ${USERNAME}
-echo '${USERNAME}:YOURPASSWORD' | chpasswd
+echo '${USERNAME}:${PASSWORD}' | chpasswd
 echo '${USERNAME} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${USERNAME}
 chmod 440 /etc/sudoers.d/${USERNAME}
 
