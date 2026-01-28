@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Fast Windows 11 Unattended Answer File
+    
+    This file enables zero-touch Windows 11 installation.
+    Place this file in the root of your USB drive alongside the Windows setup files.
+    
+    Features:
+    - Automatic disk partitioning (GPT/UEFI)
+    - Skip all prompts and EULA
+    - Optimized for Intune enrollment
+    - Bypasses Windows 11 hardware requirements
+    - No user creation (Intune/Azure AD handles this)
+    
+    Customization:
+    - Change IMAGE/INDEX value to select different Windows edition
+    - Modify ComputerName prefix as needed
+    - Adjust regional settings (InputLocale, UILanguage, etc.)
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+    
+    <!-- =================================================================== -->
+    <!-- Windows PE Phase: Disk Configuration & Image Selection              -->
+    <!-- =================================================================== -->
+    <settings pass="windowsPE">
+        <!-- Regional settings for setup -->
+        <component name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <SetupUILanguage>
+                <UILanguage>en-US</UILanguage>
+            </SetupUILanguage>
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
+        </component>
+        
+        <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            
+            <!-- Bypass Windows 11 Requirements (TPM, Secure Boot, RAM, CPU) -->
+            <RunSynchronous>
+                <RunSynchronousCommand>
+                    <Order>1</Order>
+                    <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand>
+                    <Order>2</Order>
+                    <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand>
+                    <Order>3</Order>
+                    <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand>
+                    <Order>4</Order>
+                    <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+                </RunSynchronousCommand>
+            </RunSynchronous>
+            
+            <!-- Disk Configuration: GPT Layout for UEFI -->
+            <DiskConfiguration>
+                <Disk>
+                    <DiskID>0</DiskID>
+                    <WillWipeDisk>true</WillWipeDisk>
+                    <CreatePartitions>
+                        <!-- EFI System Partition (ESP) - Required for UEFI boot -->
+                        <CreatePartition>
+                            <Order>1</Order>
+                            <Size>300</Size>
+                            <Type>EFI</Type>
+                        </CreatePartition>
+                        <!-- Microsoft Reserved Partition (MSR) -->
+                        <CreatePartition>
+                            <Order>2</Order>
+                            <Size>16</Size>
+                            <Type>MSR</Type>
+                        </CreatePartition>
+                        <!-- Windows Partition - Uses remaining space -->
+                        <CreatePartition>
+                            <Order>3</Order>
+                            <Extend>true</Extend>
+                            <Type>Primary</Type>
+                        </CreatePartition>
+                    </CreatePartitions>
+                    <ModifyPartitions>
+                        <ModifyPartition>
+                            <Order>1</Order>
+                            <PartitionID>1</PartitionID>
+                            <Format>FAT32</Format>
+                            <Label>System</Label>
+                        </ModifyPartition>
+                        <ModifyPartition>
+                            <Order>2</Order>
+                            <PartitionID>2</PartitionID>
+                        </ModifyPartition>
+                        <ModifyPartition>
+                            <Order>3</Order>
+                            <PartitionID>3</PartitionID>
+                            <Format>NTFS</Format>
+                            <Label>Windows</Label>
+                            <Letter>C</Letter>
+                        </ModifyPartition>
+                    </ModifyPartitions>
+                </Disk>
+            </DiskConfiguration>
+            
+            <!-- Image Installation -->
+            <ImageInstall>
+                <OSImage>
+                    <InstallFrom>
+                        <MetaData>
+                            <Key>/IMAGE/INDEX</Key>
+                            <!-- Index 1 = Usually Windows 11 Pro. Change as needed. -->
+                            <!-- Use: dism /Get-ImageInfo /ImageFile:install.wim to list -->
+                            <Value>1</Value>
+                        </MetaData>
+                    </InstallFrom>
+                    <InstallTo>
+                        <DiskID>0</DiskID>
+                        <PartitionID>3</PartitionID>
+                    </InstallTo>
+                    <WillShowUI>OnError</WillShowUI>
+                </OSImage>
+            </ImageInstall>
+            
+            <!-- User Data & EULA -->
+            <UserData>
+                <AcceptEula>true</AcceptEula>
+                <ProductKey>
+                    <WillShowUI>Never</WillShowUI>
+                </ProductKey>
+            </UserData>
+            
+        </component>
+    </settings>
+    
+    <!-- =================================================================== -->
+    <!-- Specialize Phase: System Configuration                              -->
+    <!-- =================================================================== -->
+    <settings pass="specialize">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <!-- Computer name with random suffix -->
+            <ComputerName>WIN11-*</ComputerName>
+            <TimeZone>UTC</TimeZone>
+            <CopyProfile>false</CopyProfile>
+        </component>
+        
+        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <RunSynchronous>
+                <!-- Disable Reserved Storage to save disk space -->
+                <RunSynchronousCommand>
+                    <Order>1</Order>
+                    <Path>cmd /c DISM /Online /Set-ReservedStorageState /State:Disabled</Path>
+                </RunSynchronousCommand>
+                <!-- Disable Hibernation to save disk space -->
+                <RunSynchronousCommand>
+                    <Order>2</Order>
+                    <Path>powercfg /h off</Path>
+                </RunSynchronousCommand>
+                <!-- Disable telemetry services -->
+                <RunSynchronousCommand>
+                    <Order>3</Order>
+                    <Path>sc config DiagTrack start= disabled</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand>
+                    <Order>4</Order>
+                    <Path>sc config dmwappushservice start= disabled</Path>
+                </RunSynchronousCommand>
+            </RunSynchronous>
+        </component>
+        
+        <!-- Security settings -->
+        <component name="Microsoft-Windows-Security-SPP-UX" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <SkipAutoActivation>true</SkipAutoActivation>
+        </component>
+    </settings>
+    
+    <!-- =================================================================== -->
+    <!-- OOBE Phase: Out-of-Box Experience (Minimal for Intune)              -->
+    <!-- =================================================================== -->
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <OOBE>
+                <!-- Hide all OOBE screens -->
+                <HideEULAPage>true</HideEULAPage>
+                <HideLocalAccountScreen>true</HideLocalAccountScreen>
+                <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                
+                <!-- Privacy settings: 3 = Don't send data to Microsoft -->
+                <ProtectYourPC>3</ProtectYourPC>
+                
+                <!-- Skip machine and user OOBE -->
+                <SkipMachineOOBE>true</SkipMachineOOBE>
+                <SkipUserOOBE>true</SkipUserOOBE>
+                
+                <!-- Don't launch Cortana voice assistant -->
+                <VMModeOptimizations>
+                    <SkipNotifyUILanguageChange>true</SkipNotifyUILanguageChange>
+                </VMModeOptimizations>
+            </OOBE>
+            
+            <!-- Organization branding -->
+            <RegisteredOrganization>Organization</RegisteredOrganization>
+            <RegisteredOwner>IT Department</RegisteredOwner>
+            
+            <!-- First logon commands -->
+            <FirstLogonCommands>
+                <SynchronousCommand>
+                    <Order>1</Order>
+                    <CommandLine>powershell -ExecutionPolicy Bypass -Command "Set-ExecutionPolicy RemoteSigned -Force"</CommandLine>
+                    <Description>Set PowerShell Execution Policy</Description>
+                </SynchronousCommand>
+            </FirstLogonCommands>
+        </component>
+        
+        <!-- Regional settings -->
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
+        </component>
+    </settings>
+    
+</unattend>
