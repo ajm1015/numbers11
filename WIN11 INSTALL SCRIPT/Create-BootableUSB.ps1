@@ -18,23 +18,30 @@
 .PARAMETER AnswerFile
     Optional path to custom autounattend.xml file.
 
-.PARAMETER Debug
+.PARAMETER DebugMode
     Enable verbose debug logging.
+
+.PARAMETER WhatIf
+    Shows what would happen without making any changes.
 
 .EXAMPLE
     .\Create-BootableUSB.ps1 -IsoPath "C:\ISO\Win11.iso" -USBDrive "E:"
 
 .EXAMPLE
-    .\Create-BootableUSB.ps1 -IsoPath "D:\Win11_23H2.iso" -USBDrive "F" -AnswerFile ".\custom-autounattend.xml" -Debug
+    .\Create-BootableUSB.ps1 -IsoPath "D:\Win11_23H2.iso" -USBDrive "F" -AnswerFile ".\custom-autounattend.xml" -DebugMode
+
+.EXAMPLE
+    .\Create-BootableUSB.ps1 -IsoPath "C:\ISO\Win11.iso" -USBDrive "E:" -WhatIf
 #>
 
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateScript({ Test-Path $_ -PathType Leaf })]
     [string]$IsoPath,
 
     [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[A-Za-z]:?$')]
     [string]$USBDrive,
 
     [Parameter(Mandatory = $false)]
@@ -134,13 +141,20 @@ Write-Host "      Found: $($disk.FriendlyName) ($diskSizeGB GB)" -ForegroundColo
 $efiDriveLetter = Get-AvailableEfiDriveLetter
 Write-DebugInfo "Will use drive letter '$efiDriveLetter' for EFI partition"
 
-# Confirm
+# Confirm with WhatIf support
 Write-Host ""
 Write-Host "WARNING: ALL DATA ON $USBDrive WILL BE ERASED!" -ForegroundColor Red
+
+if ($WhatIfPreference) {
+    Write-Host "WhatIf: Would format disk $diskNumber and create bootable USB from $IsoPath" -ForegroundColor Cyan
+    Write-Log "WhatIf mode - no changes made" -Level INFO
+    exit 0
+}
+
 $confirm = Read-Host "Type 'YES' to continue"
 if ($confirm -ne 'YES') {
-    Write-Host "Cancelled." -ForegroundColor Yellow
-    exit
+    Write-Log "Operation cancelled by user" -Level WARN
+    exit 1
 }
 
 # Format USB drive
@@ -180,24 +194,37 @@ if ($result.ExitCode -ne 0) {
     throw "Diskpart failed!"
 }
 
-# Wait for drive to be ready and verify partitions
+# Wait for drive to be ready and verify partitions with retry loop
 Write-DebugInfo "Waiting for drives to be ready..."
-Start-Sleep -Seconds 3
 
-# Verify both partitions exist
 $efiPartitionPath = "${efiDriveLetter}:\"
 $dataPartitionPath = "$USBDrive\"
+$maxRetries = 10
+$retryDelaySeconds = 2
 
-Write-DebugInfo "Checking EFI partition at: $efiPartitionPath"
-if (-not (Test-Path $efiPartitionPath)) {
-    Write-Log "EFI partition ($efiDriveLetter`:) not accessible after formatting" -Level ERROR
-    throw "EFI partition not accessible. Diskpart may have failed silently."
-}
+for ($retry = 1; $retry -le $maxRetries; $retry++) {
+    Start-Sleep -Seconds $retryDelaySeconds
 
-Write-DebugInfo "Checking data partition at: $dataPartitionPath"
-if (-not (Test-Path $dataPartitionPath)) {
-    Write-Log "Data partition ($USBDrive) not accessible after formatting" -Level ERROR
-    throw "Data partition not accessible. Diskpart may have failed silently."
+    $efiReady = Test-Path $efiPartitionPath
+    $dataReady = Test-Path $dataPartitionPath
+
+    Write-DebugInfo "Partition check attempt $retry/$maxRetries - EFI: $efiReady, Data: $dataReady"
+
+    if ($efiReady -and $dataReady) {
+        Write-DebugInfo "Both partitions are accessible"
+        break
+    }
+
+    if ($retry -eq $maxRetries) {
+        if (-not $efiReady) {
+            Write-Log "EFI partition ($efiDriveLetter`:) not accessible after $maxRetries attempts" -Level ERROR
+            throw "EFI partition not accessible. Diskpart may have failed silently."
+        }
+        if (-not $dataReady) {
+            Write-Log "Data partition ($USBDrive) not accessible after $maxRetries attempts" -Level ERROR
+            throw "Data partition not accessible. Diskpart may have failed silently."
+        }
+    }
 }
 
 Write-Host "      USB formatted successfully (EFI: ${efiDriveLetter}:, Data: $USBDrive)" -ForegroundColor Green
@@ -230,22 +257,11 @@ try {
     Write-DebugInfo "Checking for install.wim at: $installWim"
     Write-DebugInfo "Checking for install.esd at: $installEsd"
     
-<<<<<<< Updated upstream
-    $largeFile = $null
-=======
     # Log image file info for debugging (NTFS partition handles large files fine)
->>>>>>> Stashed changes
     if (Test-Path $installWim) {
         $size = (Get-Item $installWim).Length
         $sizeGB = [math]::Round($size / 1GB, 2)
         Write-DebugInfo "Found install.wim, size: $sizeGB GB"
-<<<<<<< Updated upstream
-        if ($size -gt 4GB) {
-            $largeFile = $installWim
-            Write-Log "install.wim is > 4GB ($sizeGB GB), will need splitting for FAT32 EFI partition" -Level INFO
-        }
-=======
->>>>>>> Stashed changes
     } elseif (Test-Path $installEsd) {
         Write-DebugInfo "Found install.esd instead of install.wim"
     } else {
@@ -344,12 +360,6 @@ try {
     Write-Host "[5/5] Adding unattended answer file..." -ForegroundColor Yellow
     
     $sourceAnswer = if ($AnswerFile -and (Test-Path $AnswerFile)) {
-<<<<<<< Updated upstream
-        $AnswerFile
-    } else {
-        # Use the one from same directory as this script
-        Join-Path $PSScriptRoot "autounattend.xml"
-=======
         Write-DebugInfo "Using custom answer file: $AnswerFile"
         $AnswerFile
     } else {
@@ -357,37 +367,24 @@ try {
         $defaultAnswer = Join-Path $PSScriptRoot "autounattend.xml"
         Write-DebugInfo "Looking for default answer file: $defaultAnswer"
         $defaultAnswer
->>>>>>> Stashed changes
     }
     
     if (Test-Path $sourceAnswer) {
         Copy-Item -Path $sourceAnswer -Destination (Join-Path $USBDrive "autounattend.xml") -Force
         Write-Host "      Added autounattend.xml for zero-touch install" -ForegroundColor Green
-<<<<<<< Updated upstream
-    } else {
-        Write-Host "      Warning: autounattend.xml not found - install will require manual steps" -ForegroundColor Yellow
-=======
         Write-Log "Copied autounattend.xml from: $sourceAnswer" -Level INFO
     } else {
         Write-Log "autounattend.xml not found at: $sourceAnswer - install will require manual steps" -Level WARN
->>>>>>> Stashed changes
     }
     
     # Also copy the Quick-Deploy script
     $quickDeployScript = Join-Path $PSScriptRoot "Quick-Deploy.ps1"
-<<<<<<< Updated upstream
-=======
     Write-DebugInfo "Looking for Quick-Deploy.ps1 at: $quickDeployScript"
->>>>>>> Stashed changes
     if (Test-Path $quickDeployScript) {
         $scriptsDir = Join-Path $USBDrive "Scripts"
         New-Item -Path $scriptsDir -ItemType Directory -Force | Out-Null
         Copy-Item -Path $quickDeployScript -Destination $scriptsDir -Force
         Write-Host "      Added Quick-Deploy.ps1 script" -ForegroundColor Green
-<<<<<<< Updated upstream
-    }
-    
-=======
         Write-Log "Copied Quick-Deploy.ps1" -Level INFO
     }
     
@@ -395,44 +392,28 @@ try {
     Write-Log "FATAL ERROR: $_" -Level ERROR
     Write-Log "Stack trace: $($_.ScriptStackTrace)" -Level ERROR
     throw
->>>>>>> Stashed changes
 } finally {
     # Unmount ISO
     Write-Host ""
     Write-Host "Unmounting ISO..." -ForegroundColor Yellow
-<<<<<<< Updated upstream
-    Dismount-DiskImage -ImagePath $IsoPath | Out-Null
-}
-
-=======
     Write-DebugInfo "Dismounting ISO: $IsoPath"
     Dismount-DiskImage -ImagePath $IsoPath -ErrorAction SilentlyContinue | Out-Null
 }
 
 Write-Log "USB creation completed successfully" -Level INFO
 
->>>>>>> Stashed changes
 Write-Host ""
 Write-Host "╔═══════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "║     USB CREATION COMPLETE! ✓                      ║" -ForegroundColor Green
+Write-Host "║     USB CREATION COMPLETE!                        ║" -ForegroundColor Green
 Write-Host "╚═══════════════════════════════════════════════════╝" -ForegroundColor Green
 Write-Host ""
-<<<<<<< Updated upstream
-Write-Host "Your bootable USB is ready at: $USBDrive" -ForegroundColor Cyan
-=======
 Write-Host "Your bootable USB is ready:" -ForegroundColor Cyan
 Write-Host "  EFI Partition:  ${efiDriveLetter}: (FAT32, boot files)" -ForegroundColor Cyan
 Write-Host "  Data Partition: $USBDrive (NTFS, Windows files)" -ForegroundColor Cyan
->>>>>>> Stashed changes
 Write-Host ""
 Write-Host "To use:" -ForegroundColor Yellow
 Write-Host "  1. Insert USB into target computer"
 Write-Host "  2. Boot from USB (usually F12 or F2 at startup)"
-<<<<<<< Updated upstream
-Write-Host "  3. Windows will install automatically (unattended)"
-Write-Host "  4. After reboot, connect to network for Intune enrollment"
-Write-Host ""
-=======
 Write-Host "  3. Select 'UEFI: <USB Drive>' if multiple options shown"
 Write-Host "  4. Windows will install automatically (unattended)"
 Write-Host "  5. After reboot, connect to network for Intune enrollment"
@@ -441,4 +422,5 @@ if ($DebugMode) {
     Write-Host "Debug log saved to: $script:LogFile" -ForegroundColor DarkGray
     Write-Host ""
 }
->>>>>>> Stashed changes
+
+exit 0
