@@ -143,6 +143,24 @@ function Test-Prerequisites {
 function Initialize-WorkDirectories {
     Write-Log "Initializing work directories..."
     
+    # First, clean up any stale WIM mounts from previous failed runs
+    Write-Log "Checking for stale WIM mounts..."
+    $staleMounts = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue
+    if ($staleMounts) {
+        foreach ($mount in $staleMounts) {
+            if ($mount.Path -like "*$OutputPath*") {
+                Write-Log "Cleaning up stale mount: $($mount.Path)" -Level Warning
+                try {
+                    Dismount-WindowsImage -Path $mount.Path -Discard -ErrorAction Stop
+                } catch {
+                    Write-Log "Failed to dismount $($mount.Path): $_" -Level Warning
+                    # Force cleanup using DISM directly
+                    & dism.exe /Unmount-Wim /MountDir:"$($mount.Path)" /Discard 2>&1 | Out-Null
+                }
+            }
+        }
+    }
+    
     $dirs = @(
         $OutputPath,
         $script:Config.WorkDir,
@@ -154,7 +172,23 @@ function Initialize-WorkDirectories {
     )
     
     foreach ($dir in $dirs) {
-        if (-not (Test-Path $dir)) {
+        if (Test-Path $dir) {
+            # Root OutputPath should be preserved, but subdirectories need clearing
+            if ($dir -eq $OutputPath) {
+                Write-Log "Output directory exists: $dir"
+            }
+            # Mount directories must be empty for WIM mounting to work
+            elseif ($dir -eq $script:Config.MountDir -or $dir -eq $script:Config.BootMountDir) {
+                Write-Log "Clearing mount directory: $dir"
+                Remove-Item -Path "$dir\*" -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            # Work directories should be cleared to prevent stale file issues
+            elseif ($dir -eq $script:Config.MediaDir -or $dir -eq $script:Config.WorkDir -or 
+                    $dir -eq $script:Config.DriversDir -or $dir -eq $script:Config.ScriptsDir) {
+                Write-Log "Clearing work directory: $dir"
+                Remove-Item -Path "$dir\*" -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        } else {
             New-Item -Path $dir -ItemType Directory -Force | Out-Null
             Write-Log "Created directory: $dir"
         }
@@ -213,6 +247,39 @@ function Copy-ISOContents {
     # Robocopy exit codes 0-7 are success
     if ($result.ExitCode -gt 7) {
         throw "Failed to copy ISO contents. Robocopy exit code: $($result.ExitCode)"
+    }
+    
+    # CRITICAL: Remove read-only attributes from copied files
+    # Files copied from ISO are read-only, which prevents WIM mounting for modifications
+    Write-Log "Removing read-only attributes from copied files..."
+    $wimFiles = @(
+        (Join-Path $destination "sources\install.wim"),
+        (Join-Path $destination "sources\install.esd"),
+        (Join-Path $destination "sources\boot.wim")
+    )
+    
+    foreach ($wimFile in $wimFiles) {
+        if (Test-Path $wimFile) {
+            Write-Log "Clearing read-only on: $wimFile"
+            Set-ItemProperty -Path $wimFile -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+            # Also use attrib as a fallback (more reliable for some scenarios)
+            & attrib.exe -R "$wimFile" 2>&1 | Out-Null
+        }
+    }
+    
+    # Clear read-only on all files in sources directory (belt and suspenders)
+    # Note: $_.IsReadOnly = $false only modifies in-memory object, doesn't persist to disk
+    # Must use Set-ItemProperty or attrib.exe to actually change file attributes
+    $sourcesDir = Join-Path $destination "sources"
+    if (Test-Path $sourcesDir) {
+        Write-Log "Clearing read-only attributes on all source files..."
+        # Use attrib.exe recursively - most reliable method for bulk attribute changes
+        & attrib.exe -R "$sourcesDir\*.*" /S 2>&1 | Out-Null
+        
+        # Fallback: also use Set-ItemProperty for any files that attrib might miss
+        Get-ChildItem -Path $sourcesDir -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Set-ItemProperty -Path $_.FullName -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        }
     }
     
     Write-Log "ISO contents copied successfully" -Level Success
@@ -277,9 +344,49 @@ function Optimize-WindowsImage {
     
     $wimPath = Join-Path $script:Config.MediaDir "sources\install.wim"
     
+    # Verify WIM exists and is writable
+    if (-not (Test-Path $wimPath)) {
+        throw "install.wim not found at: $wimPath"
+    }
+    
+    # Double-check read-only is cleared
+    $wimItem = Get-Item $wimPath
+    if ($wimItem.IsReadOnly) {
+        Write-Log "Removing read-only attribute from install.wim..." -Level Warning
+        $wimItem.IsReadOnly = $false
+        & attrib.exe -R "$wimPath" 2>&1 | Out-Null
+    }
+    
+    # Ensure mount directory exists and is empty
+    if (-not (Test-Path $script:Config.MountDir)) {
+        New-Item -Path $script:Config.MountDir -ItemType Directory -Force | Out-Null
+    } else {
+        # Check if something is already mounted here
+        $existingMount = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $script:Config.MountDir }
+        if ($existingMount) {
+            Write-Log "Dismounting existing image at mount point..." -Level Warning
+            Dismount-WindowsImage -Path $script:Config.MountDir -Discard -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+        # Clear any leftover files
+        Remove-Item -Path "$($script:Config.MountDir)\*" -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    
     # Mount the image
     Write-Log "Mounting install.wim for optimization..."
-    Mount-WindowsImage -ImagePath $wimPath -Index $ImageIndex -Path $script:Config.MountDir
+    try {
+        Mount-WindowsImage -ImagePath $wimPath -Index $ImageIndex -Path $script:Config.MountDir -ErrorAction Stop
+    } catch {
+        Write-Log "Mount failed: $_" -Level Error
+        Write-Log "Attempting cleanup and retry..." -Level Warning
+        
+        # Try DISM directly as fallback
+        & dism.exe /Unmount-Wim /MountDir:"$($script:Config.MountDir)" /Discard 2>&1 | Out-Null
+        Start-Sleep -Seconds 3
+        
+        # Retry mount
+        Mount-WindowsImage -ImagePath $wimPath -Index $ImageIndex -Path $script:Config.MountDir -ErrorAction Stop
+    }
     
     try {
         # Remove unnecessary AppX packages for faster install
@@ -304,8 +411,8 @@ function Optimize-WindowsImage {
         $provisioned = Get-AppxProvisionedPackage -Path $script:Config.MountDir
         
         foreach ($pattern in $packagesToRemove) {
-            $matches = $provisioned | Where-Object { $_.DisplayName -like $pattern }
-            foreach ($pkg in $matches) {
+            $matchingPackages = $provisioned | Where-Object { $_.DisplayName -like $pattern }
+            foreach ($pkg in $matchingPackages) {
                 try {
                     Write-Log "Removing: $($pkg.DisplayName)"
                     Remove-AppxProvisionedPackage -Path $script:Config.MountDir -PackageName $pkg.PackageName -ErrorAction SilentlyContinue | Out-Null
@@ -506,9 +613,41 @@ function Optimize-BootWim {
         return
     }
     
+    # Ensure boot.wim is writable
+    $bootWimItem = Get-Item $bootWimPath
+    if ($bootWimItem.IsReadOnly) {
+        Write-Log "Removing read-only attribute from boot.wim..." -Level Warning
+        $bootWimItem.IsReadOnly = $false
+        & attrib.exe -R "$bootWimPath" 2>&1 | Out-Null
+    }
+    
+    # Ensure mount directory exists and is empty
+    if (-not (Test-Path $script:Config.BootMountDir)) {
+        New-Item -Path $script:Config.BootMountDir -ItemType Directory -Force | Out-Null
+    } else {
+        # Check if something is already mounted here
+        $existingMount = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $script:Config.BootMountDir }
+        if ($existingMount) {
+            Write-Log "Dismounting existing image at boot mount point..." -Level Warning
+            Dismount-WindowsImage -Path $script:Config.BootMountDir -Discard -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
+        Remove-Item -Path "$($script:Config.BootMountDir)\*" -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    
     # Mount boot.wim index 2 (Windows Setup)
     Write-Log "Mounting boot.wim..."
-    Mount-WindowsImage -ImagePath $bootWimPath -Index 2 -Path $script:Config.BootMountDir
+    try {
+        Mount-WindowsImage -ImagePath $bootWimPath -Index 2 -Path $script:Config.BootMountDir -ErrorAction Stop
+    } catch {
+        Write-Log "Boot.wim mount failed: $_" -Level Error
+        Write-Log "Attempting cleanup and retry..." -Level Warning
+        
+        & dism.exe /Unmount-Wim /MountDir:"$($script:Config.BootMountDir)" /Discard 2>&1 | Out-Null
+        Start-Sleep -Seconds 3
+        
+        Mount-WindowsImage -ImagePath $bootWimPath -Index 2 -Path $script:Config.BootMountDir -ErrorAction Stop
+    }
     
     try {
         # Add PowerShell to WinPE for scripted installations
@@ -864,18 +1003,35 @@ function Invoke-Build {
         throw
     } finally {
         # Cleanup
+        Write-Log "Running cleanup..."
+        
         Dismount-WindowsISO -IsoPath $IsoPath
         
         # Cleanup mount directories if they exist
         if (Test-Path $script:Config.MountDir) {
+            Write-Log "Cleaning up install.wim mount..."
             try {
                 Dismount-WindowsImage -Path $script:Config.MountDir -Discard -ErrorAction SilentlyContinue
-            } catch { }
+            } catch {
+                # Fallback to DISM directly
+                & dism.exe /Unmount-Wim /MountDir:"$($script:Config.MountDir)" /Discard 2>&1 | Out-Null
+            }
         }
         if (Test-Path $script:Config.BootMountDir) {
+            Write-Log "Cleaning up boot.wim mount..."
             try {
                 Dismount-WindowsImage -Path $script:Config.BootMountDir -Discard -ErrorAction SilentlyContinue
-            } catch { }
+            } catch {
+                # Fallback to DISM directly
+                & dism.exe /Unmount-Wim /MountDir:"$($script:Config.BootMountDir)" /Discard 2>&1 | Out-Null
+            }
+        }
+        
+        # Final cleanup of any orphaned mounts
+        $orphanedMounts = Get-WindowsImage -Mounted -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*$OutputPath*" }
+        foreach ($mount in $orphanedMounts) {
+            Write-Log "Cleaning up orphaned mount: $($mount.Path)" -Level Warning
+            & dism.exe /Unmount-Wim /MountDir:"$($mount.Path)" /Discard 2>&1 | Out-Null
         }
     }
 }
