@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+#===============================================================================
+# SYSINFO - A fastfetch/neofetch clone (optimized)
+#===============================================================================
+# Synopsis: Display system information with ASCII art
+# Author: IT Automation Team
+# Version: 1.1.0
+# Date: 2026-01-26
+# License: MIT
+#===============================================================================
+
+set -uo pipefail
+
+#-------------------------------------------------------------------------------
+# Color definitions
+#-------------------------------------------------------------------------------
+readonly RESET='\033[0m'
+readonly BOLD='\033[1m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[0;33m'
+readonly CYAN='\033[0;36m'
+
+ACCENT="${CYAN}"
+
+#-------------------------------------------------------------------------------
+# Temp directory for parallel execution
+#-------------------------------------------------------------------------------
+TMPDIR_SYSINFO=$(mktemp -d)
+trap 'rm -rf "${TMPDIR_SYSINFO}"' EXIT
+
+#-------------------------------------------------------------------------------
+# ASCII Art Logos
+#-------------------------------------------------------------------------------
+get_macos_logo() {
+    cat << 'EOF'
+                    'c.
+                 ,xNMM.
+               .OMMMMo
+               OMMM0,
+     .;loddo:' loolloddol;.
+   cKMMMMMMMMMMNWMMMMMMMMMM0:
+ .KMMMMMMMMMMMMMMMMMMMMMMMWd.
+ XMMMMMMMMMMMMMMMMMMMMMMMX.
+;MMMMMMMMMMMMMMMMMMMMMMMM:
+:MMMMMMMMMMMMMMMMMMMMMMMM:
+.MMMMMMMMMMMMMMMMMMMMMMMMX.
+ kMMMMMMMMMMMMMMMMMMMMMMMMWd.
+ .XMMMMMMMMMMMMMMMMMMMMMMMMMMk
+  .XMMMMMMMMMMMMMMMMMMMMMMMMK.
+    kMMMMMMMMMMMMMMMMMMMMMMd
+     ;KMMMMMMMWXXWMMMMMMMk.
+       .coeli;.  .:odl:.
+EOF
+}
+
+get_linux_logo() {
+    cat << 'EOF'
+        .--.
+       |o_o |
+       |:_/ |
+      //   \ \
+     (|     | )
+    /'\_   _/`\
+    \___)=(___/
+EOF
+}
+
+#-------------------------------------------------------------------------------
+# Cached data collectors (run once, parse multiple times)
+#-------------------------------------------------------------------------------
+cache_sysctl() {
+    # Batch all sysctl calls into one
+    sysctl -a 2>/dev/null > "${TMPDIR_SYSINFO}/sysctl" &
+}
+
+cache_system_profiler() {
+    # Single system_profiler call for all hardware data (this is the slow one)
+    system_profiler SPHardwareDataType SPDisplaysDataType SPNVMeDataType SPAudioDataType 2>/dev/null > "${TMPDIR_SYSINFO}/sysprof" &
+}
+
+cache_slow_commands() {
+    # Run all slow commands in parallel
+    
+    # Homebrew package count (use Cellar directory instead of brew list)
+    {
+        if [[ -d /opt/homebrew/Cellar ]]; then
+            ls -1 /opt/homebrew/Cellar 2>/dev/null | wc -l | xargs
+        elif [[ -d /usr/local/Cellar ]]; then
+            ls -1 /usr/local/Cellar 2>/dev/null | wc -l | xargs
+        else
+            echo "0"
+        fi
+    } > "${TMPDIR_SYSINFO}/brew_count" &
+    
+    # SIP status
+    csrutil status 2>/dev/null | grep -o "enabled\|disabled" > "${TMPDIR_SYSINFO}/sip" &
+    
+    # FileVault status
+    fdesetup status 2>/dev/null | grep -o "On\|Off" > "${TMPDIR_SYSINFO}/filevault" &
+    
+    # WiFi SSID
+    /System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null | grep ' SSID' | awk '{print $2}' > "${TMPDIR_SYSINFO}/wifi" &
+    
+    # Battery
+    pmset -g batt 2>/dev/null > "${TMPDIR_SYSINFO}/battery" &
+    
+    # vm_stat for memory
+    vm_stat 2>/dev/null > "${TMPDIR_SYSINFO}/vmstat" &
+    
+    # Process count
+    ps -e 2>/dev/null | wc -l > "${TMPDIR_SYSINFO}/procs" &
+}
+
+wait_for_cache() {
+    wait
+}
+
+#-------------------------------------------------------------------------------
+# Fast getters using cached data
+#-------------------------------------------------------------------------------
+get_sysctl_val() {
+    grep "^$1:" "${TMPDIR_SYSINFO}/sysctl" 2>/dev/null | cut -d: -f2 | xargs
+}
+
+get_sysprof_val() {
+    grep "$1" "${TMPDIR_SYSINFO}/sysprof" 2>/dev/null | head -1 | cut -d: -f2 | xargs
+}
+
+#-------------------------------------------------------------------------------
+# System info functions (optimized)
+#-------------------------------------------------------------------------------
+get_os() {
+    if [[ -f /System/Library/CoreServices/SystemVersion.plist ]]; then
+        local version build
+        version=$(sw_vers -productVersion)
+        build=$(sw_vers -buildVersion)
+        echo "macOS ${version} (${build})"
+    else
+        echo "$(uname -s) $(uname -r)"
+    fi
+}
+
+get_macos_version_name() {
+    local major
+    major=$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)
+    case "${major}" in
+        15) echo "Sequoia" ;;
+        14) echo "Sonoma" ;;
+        13) echo "Ventura" ;;
+        12) echo "Monterey" ;;
+        11) echo "Big Sur" ;;
+        26) echo "Tahoe" ;;
+        *) echo "" ;;
+    esac
+}
+
+get_host() {
+    local host
+    host=$(get_sysprof_val "Model Name")
+    [[ -n "${host}" ]] && echo "${host}" || get_sysctl_val "hw.model"
+}
+
+get_kernel() {
+    uname -sr
+}
+
+get_uptime() {
+    local boot_time current_time seconds
+    boot_time=$(get_sysctl_val "kern.boottime" | awk '{print $4}' | tr -d ',')
+    [[ -z "${boot_time}" ]] && boot_time=$(sysctl -n kern.boottime | awk '{print $4}' | tr -d ',')
+    current_time=$(date +%s)
+    seconds=$((current_time - boot_time))
+    
+    local days=$((seconds / 86400))
+    local hours=$(((seconds % 86400) / 3600))
+    local minutes=$(((seconds % 3600) / 60))
+    
+    local result=""
+    ((days > 0)) && result="${days}d "
+    ((hours > 0)) && result="${result}${hours}h "
+    echo "${result}${minutes}m"
+}
+
+get_shell() {
+    local shell_name version
+    shell_name=$(basename "${SHELL:-unknown}")
+    case "${shell_name}" in
+        zsh)  version=$("${SHELL}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1) ;;
+        bash) version=$("${SHELL}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) ;;
+        fish) version=$("${SHELL}" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+') ;;
+    esac
+    echo "${shell_name} ${version:-}"
+}
+
+get_terminal() {
+    if [[ -n "${TERM_PROGRAM:-}" ]]; then
+        echo "${TERM_PROGRAM} ${TERM_PROGRAM_VERSION:-}"
+    else
+        echo "${TERM:-unknown}"
+    fi
+}
+
+get_cpu() {
+    get_sysctl_val "machdep.cpu.brand_string" || sysctl -n machdep.cpu.brand_string 2>/dev/null
+}
+
+get_cpu_cores() {
+    local total perf eff
+    total=$(get_sysctl_val "hw.logicalcpu")
+    perf=$(get_sysctl_val "hw.perflevel0.logicalcpu")
+    eff=$(get_sysctl_val "hw.perflevel1.logicalcpu")
+    
+    [[ -z "${total}" ]] && total=$(sysctl -n hw.logicalcpu 2>/dev/null)
+    
+    if [[ -n "${perf}" && -n "${eff}" ]]; then
+        echo "${total} (${perf}P + ${eff}E)"
+    else
+        echo "${total}"
+    fi
+}
+
+get_cpu_usage() {
+    # Use top for a quick snapshot instead of ps
+    top -l 1 -n 0 2>/dev/null | grep "CPU usage" | awk '{print $3}' || echo "N/A"
+}
+
+get_load_avg() {
+    sysctl -n vm.loadavg 2>/dev/null | tr -d '{}' | awk '{print $1, $2, $3}'
+}
+
+get_gpu() {
+    get_sysprof_val "Chipset Model"
+}
+
+get_memory() {
+    local total_bytes page_size pages_active pages_wired used_gb total_gb
+    
+    total_bytes=$(get_sysctl_val "hw.memsize")
+    [[ -z "${total_bytes}" ]] && total_bytes=$(sysctl -n hw.memsize 2>/dev/null)
+    
+    page_size=$(get_sysctl_val "hw.pagesize")
+    [[ -z "${page_size}" ]] && page_size=16384
+    
+    if [[ -f "${TMPDIR_SYSINFO}/vmstat" ]]; then
+        pages_active=$(grep "Pages active" "${TMPDIR_SYSINFO}/vmstat" | awk '{print $3}' | tr -d '.')
+        pages_wired=$(grep "Pages wired" "${TMPDIR_SYSINFO}/vmstat" | awk '{print $4}' | tr -d '.')
+    fi
+    
+    local used_bytes=$(( (pages_active + pages_wired) * page_size ))
+    
+    # Use awk instead of bc for speed
+    used_gb=$(awk "BEGIN {printf \"%.1f\", ${used_bytes} / 1073741824}")
+    total_gb=$(awk "BEGIN {printf \"%.1f\", ${total_bytes} / 1073741824}")
+    
+    echo "${used_gb}GB / ${total_gb}GB"
+}
+
+get_disk() {
+    df -h / 2>/dev/null | awk 'NR==2 {print $3 " / " $2 " (" $5 ")"}'
+}
+
+get_display() {
+    get_sysprof_val "Resolution"
+}
+
+get_storage() {
+    # Look specifically in NVMe section for the SSD model
+    grep -A 20 "NVMExpress" "${TMPDIR_SYSINFO}/sysprof" 2>/dev/null | grep "Model" | head -1 | cut -d: -f2 | xargs
+}
+
+get_packages() {
+    local count
+    count=$(cat "${TMPDIR_SYSINFO}/brew_count" 2>/dev/null)
+    [[ -n "${count}" && "${count}" -gt 0 ]] && echo "${count} (brew)" || echo "Unknown"
+}
+
+get_local_ip() {
+    ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "Unknown"
+}
+
+get_wifi() {
+    local ssid
+    ssid=$(cat "${TMPDIR_SYSINFO}/wifi" 2>/dev/null)
+    [[ -n "${ssid}" ]] && echo "${ssid}" || echo ""
+}
+
+get_battery() {
+    local batt_info percent status
+    batt_info=$(cat "${TMPDIR_SYSINFO}/battery" 2>/dev/null)
+    
+    if echo "${batt_info}" | grep -qE "[0-9]+%"; then
+        percent=$(echo "${batt_info}" | grep -oE '[0-9]+%' | head -1)
+        if echo "${batt_info}" | grep -q "charging"; then
+            status="Charging"
+        elif echo "${batt_info}" | grep -q "discharging"; then
+            status="Discharging"
+        else
+            status="AC Power"
+        fi
+        echo "${percent} (${status})"
+    else
+        echo ""
+    fi
+}
+
+get_sip() {
+    local status
+    status=$(cat "${TMPDIR_SYSINFO}/sip" 2>/dev/null)
+    [[ -n "${status}" ]] && echo "${status^}" || echo "Unknown"
+}
+
+get_filevault() {
+    cat "${TMPDIR_SYSINFO}/filevault" 2>/dev/null || echo "Unknown"
+}
+
+get_processes() {
+    cat "${TMPDIR_SYSINFO}/procs" 2>/dev/null | xargs
+}
+
+get_timezone() {
+    readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||'
+}
+
+#-------------------------------------------------------------------------------
+# Color bar display
+#-------------------------------------------------------------------------------
+print_color_bars() {
+    printf "%-38s  " ""
+    echo -e '\033[40m   \033[41m   \033[42m   \033[43m   \033[44m   \033[45m   \033[46m   \033[47m   \033[0m'
+    printf "%-38s  " ""
+    echo -e '\033[100m   \033[101m   \033[102m   \033[103m   \033[104m   \033[105m   \033[106m   \033[107m   \033[0m'
+}
+
+#-------------------------------------------------------------------------------
+# Main
+#-------------------------------------------------------------------------------
+main() {
+    local os_name
+    os_name=$(uname -s)
+    
+    # Start all slow operations in parallel immediately
+    if [[ "${os_name}" == "Darwin" ]]; then
+        ACCENT="${GREEN}"
+        cache_sysctl
+        cache_system_profiler
+        cache_slow_commands
+    else
+        ACCENT="${YELLOW}"
+    fi
+    
+    # Get fast info while slow commands run
+    local user_host os kernel uptime shell_info terminal de_wm local_ip timezone locale
+    
+    user_host="${USER}@$(hostname -s)"
+    os=$(get_os)
+    kernel=$(get_kernel)
+    shell_info=$(get_shell)
+    terminal=$(get_terminal)
+    de_wm="Aqua"
+    local_ip=$(get_local_ip)
+    timezone=$(get_timezone)
+    locale="${LANG:-en_US.UTF-8}"
+    
+    # Wait for parallel jobs to complete
+    wait_for_cache
+    
+    # Now get cached data
+    local macos_name host cpu cpu_cores cpu_usage load_avg gpu memory disk display storage
+    local packages wifi battery sip_status filevault_status processes
+    
+    macos_name=$(get_macos_version_name)
+    host=$(get_host)
+    uptime=$(get_uptime)
+    cpu=$(get_cpu)
+    cpu_cores=$(get_cpu_cores)
+    cpu_usage=$(get_cpu_usage)
+    load_avg=$(get_load_avg)
+    gpu=$(get_gpu)
+    memory=$(get_memory)
+    disk=$(get_disk)
+    display=$(get_display)
+    storage=$(get_storage)
+    packages=$(get_packages)
+    wifi=$(get_wifi)
+    battery=$(get_battery)
+    sip_status=$(get_sip)
+    filevault_status=$(get_filevault)
+    processes=$(get_processes)
+    
+    # Build output
+    local logo_lines=()
+    while IFS= read -r line; do
+        logo_lines+=("${line}")
+    done <<< "$(get_macos_logo)"
+    
+    local info_lines=()
+    info_lines+=("${ACCENT}${BOLD}${user_host}${RESET}")
+    info_lines+=("$(printf '%*s' "${#user_host}" '' | tr ' ' '-')")
+    [[ -n "${macos_name}" ]] && info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s (%s)" "OS" "${os}" "${macos_name}")") || info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "OS" "${os}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Host" "${host}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Kernel" "${kernel}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Uptime" "${uptime}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} SIP: %s | FileVault: %s" "Security" "${sip_status}" "${filevault_status}")")
+    info_lines+=("")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Packages" "${packages}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Shell" "${shell_info}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Terminal" "${terminal}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "DE/WM" "${de_wm}")")
+    info_lines+=("")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "CPU" "${cpu}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s cores | Usage: %s" "Cores" "${cpu_cores}" "${cpu_usage}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Load" "${load_avg}")")
+    [[ -n "${gpu}" ]] && info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "GPU" "${gpu}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Memory" "${memory}")")
+    [[ -n "${display}" ]] && info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Display" "${display}")")
+    info_lines+=("")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Disk (/)" "${disk}")")
+    [[ -n "${storage}" ]] && info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Storage" "${storage}")")
+    info_lines+=("")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Local IP" "${local_ip}")")
+    [[ -n "${wifi}" ]] && info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "WiFi" "${wifi}")")
+    info_lines+=("")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Processes" "${processes}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Timezone" "${timezone}")")
+    info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Locale" "${locale}")")
+    [[ -n "${battery}" ]] && info_lines+=("$(printf "${ACCENT}${BOLD}%-12s${RESET} %s" "Battery" "${battery}")")
+    info_lines+=("")
+    
+    # Print
+    local max_lines=${#logo_lines[@]}
+    (( ${#info_lines[@]} > max_lines )) && max_lines=${#info_lines[@]}
+    
+    echo ""
+    for ((i = 0; i < max_lines; i++)); do
+        printf "${ACCENT}%-38s${RESET}  " "${logo_lines[i]:-}"
+        echo -e "${info_lines[i]:-}"
+    done
+    
+    print_color_bars
+    echo ""
+}
+
+main "$@"

@@ -1,0 +1,2342 @@
+#!/usr/bin/env bash
+#
+# scriptkiddy - Universal Linux Unattended Installation Generator
+# Generate automation configs for ANY major Linux distribution
+#
+# Supported Distros & Formats:
+#   - Debian/Ubuntu (legacy)  → Preseed
+#   - Ubuntu 20.04+           → Autoinstall (cloud-init)
+#   - Fedora/RHEL/Rocky/Alma  → Kickstart
+#   - Arch Linux              → archinstall JSON
+#   - openSUSE                → AutoYaST XML
+#   - Alpine Linux            → setup-alpine answers
+#   - Void Linux              → void-installer script
+#   - NixOS                   → configuration.nix
+#
+# Author: Jack Morton
+# Version: 3.0.0
+#
+
+set -euo pipefail
+
+# Require bash 4.0+ for associative arrays
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+    echo "error: scriptkiddy requires bash 4.0 or later" >&2
+    echo "Your version: ${BASH_VERSION}" >&2
+    echo "" >&2
+    echo "On macOS, install newer bash with:" >&2
+    echo "  brew install bash" >&2
+    echo "Then run with: /opt/homebrew/bin/bash $0 [args]" >&2
+    exit 1
+fi
+
+readonly VERSION="3.0.0"
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/scriptkiddy"
+readonly PROFILES_DIR="${CONFIG_DIR}/profiles"
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                              DISTRO REGISTRY                                  ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+declare -A DISTRO_FORMATS=(
+    [debian]="preseed"
+    [ubuntu-legacy]="preseed"
+    [ubuntu]="autoinstall"
+    [fedora]="kickstart"
+    [rhel]="kickstart"
+    [centos]="kickstart"
+    [rocky]="kickstart"
+    [alma]="kickstart"
+    [arch]="archinstall"
+    [opensuse]="autoyast"
+    [suse]="autoyast"
+    [alpine]="alpine-answers"
+    [void]="void-installer"
+    [nixos]="nixos-config"
+)
+
+declare -A DISTRO_MIRRORS=(
+    [debian]="http://deb.debian.org/debian"
+    [ubuntu]="http://archive.ubuntu.com/ubuntu"
+    [fedora]="https://download.fedoraproject.org/pub/fedora/linux/releases"
+    [rhel]="https://cdn.redhat.com/content/dist/rhel9"
+    [centos]="http://mirror.centos.org/centos-stream"
+    [rocky]="https://download.rockylinux.org/pub/rocky"
+    [alma]="https://repo.almalinux.org/almalinux"
+    [arch]="https://mirrors.kernel.org/archlinux"
+    [opensuse]="https://download.opensuse.org"
+    [alpine]="https://dl-cdn.alpinelinux.org/alpine"
+    [void]="https://repo-default.voidlinux.org"
+    [nixos]="https://channels.nixos.org"
+)
+
+declare -A DISTRO_RELEASES=(
+    [debian]="sid trixie bookworm bullseye"
+    [ubuntu]="noble jammy focal"
+    [fedora]="40 39 38"
+    [rhel]="9 8"
+    [centos]="stream-9 stream-8"
+    [rocky]="9 8"
+    [alma]="9 8"
+    [arch]="latest"
+    [opensuse]="tumbleweed leap-15.5 leap-15.4"
+    [alpine]="edge 3.19 3.18"
+    [void]="current"
+    [nixos]="unstable 24.05 23.11"
+)
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                                 DEFAULTS                                      ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# Target Distribution
+DISTRO="debian"
+RELEASE=""
+
+# System
+MIRROR=""
+TIMEZONE="UTC"
+LOCALE="en_US.UTF-8"
+KEYBOARD="us"
+HOSTNAME="linux"
+DOMAIN=""
+
+# User
+USERNAME="user"
+FULLNAME=""
+PASSWORD=""
+ROOT_PASSWORD=""
+ENABLE_ROOT=0
+
+# Disk
+DISK="/dev/sda"
+FILESYSTEM="ext4"
+BOOT_MODE="efi"
+USE_LVM=0
+USE_ENCRYPTION=0
+ENCRYPTION_PASSWORD=""
+SWAP_SIZE="4096"
+EFI_SIZE="512"
+BOOT_SIZE="1024"
+BTRFS_SUBVOLS=1
+
+# Desktop
+DE=""
+
+# Packages
+EXTRA_PACKAGES=""
+PACKAGE_GROUPS=""
+
+# Network
+NETWORK_TYPE="dhcp"
+STATIC_IP=""
+STATIC_NETMASK="255.255.255.0"
+STATIC_GATEWAY=""
+STATIC_DNS="1.1.1.1 8.8.8.8"
+WIFI_SSID=""
+WIFI_PASSWORD=""
+
+# SSH
+SSH_ENABLE=1
+SSH_PORT="22"
+SSH_PERMIT_ROOT="no"
+SSH_PUBKEY=""
+SSH_PUBKEY_FILE=""
+
+# Security
+ENABLE_FIREWALL=0
+ENABLE_SELINUX=1
+SELINUX_MODE="enforcing"
+
+# Post-Install
+POST_SCRIPT=""
+POST_SCRIPT_FILE=""
+
+# Output
+OUTPUT=""
+DRY_RUN=0
+VERBOSE=0
+INTERACTIVE=0
+PROFILE=""
+SAVE_PROFILE=""
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                                  COLORS                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[0;33m'
+    BLUE='\033[0;34m'
+    MAGENTA='\033[0;35m'
+    CYAN='\033[0;36m'
+    BOLD='\033[1m'
+    DIM='\033[2m'
+    RESET='\033[0m'
+else
+    RED='' GREEN='' YELLOW='' BLUE='' MAGENTA='' CYAN='' BOLD='' DIM='' RESET=''
+fi
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                                 LOGGING                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+log_info()  { printf "${GREEN}>>>${RESET} %s\n" "$1"; }
+log_warn()  { printf "${YELLOW}warning:${RESET} %s\n" "$1" >&2; }
+log_error() { printf "${RED}error:${RESET} %s\n" "$1" >&2; }
+log_debug() { [[ "$VERBOSE" -eq 1 ]] && printf "${DIM}[debug]${RESET} %s\n" "$1" || true; }
+die()       { log_error "$1"; exit 1; }
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                                 HELPERS                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+prompt() {
+    local var="$1" text="$2" default="$3"
+    printf "${CYAN}%s${RESET} [%s]: " "$text" "$default"
+    read -r input
+    printf -v "$var" '%s' "${input:-$default}"
+}
+
+prompt_password() {
+    local var="$1" text="$2"
+    printf "${CYAN}%s:${RESET} " "$text"
+    read -rs input
+    printf "\n"
+    printf -v "$var" '%s' "$input"
+}
+
+prompt_yesno() {
+    local text="$1" default="${2:-n}"
+    local yn
+    if [[ "$default" == "y" ]]; then
+        printf "${CYAN}%s${RESET} [Y/n]: " "$text"
+    else
+        printf "${CYAN}%s${RESET} [y/N]: " "$text"
+    fi
+    read -r yn
+    yn="${yn:-$default}"
+    [[ "$yn" =~ ^[Yy] ]]
+}
+
+ensure_dir() {
+    [[ -d "$1" ]] || mkdir -p "$1"
+}
+
+# Escape special characters for JSON strings
+escape_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"      # backslash
+    s="${s//\"/\\\"}"      # double quote
+    s="${s//$'\n'/\\n}"    # newline
+    s="${s//$'\r'/\\r}"    # carriage return
+    s="${s//$'\t'/\\t}"    # tab
+    echo "$s"
+}
+
+# Escape special characters for XML content
+escape_xml() {
+    local s="$1"
+    # Note: & in replacement string must be escaped with \ in bash
+    s="${s//&/\&amp;}"     # ampersand (must be first!)
+    s="${s//</\&lt;}"      # less than
+    s="${s//>/\&gt;}"      # greater than
+    s="${s//\"/\&quot;}"   # double quote
+    s="${s//\'/\&apos;}"   # single quote
+    echo "$s"
+}
+
+# Cross-platform SHA-512 password hashing
+# Returns hash on stdout, exit 0 on success, exit 1 on failure
+hash_password() {
+    local password="$1"
+    local salt hash
+
+    salt=$(LC_ALL=C tr -dc 'a-zA-Z0-9./' </dev/urandom 2>/dev/null | head -c 16 || openssl rand -base64 12 | tr -dc 'a-zA-Z0-9./' | head -c 16)
+
+    # Method 1: openssl passwd -6 (OpenSSL 1.1.1+, not LibreSSL)
+    if hash=$(printf '%s' "$password" | openssl passwd -6 -salt "$salt" -stdin 2>/dev/null) && [[ -n "$hash" && "$hash" == '$6$'* ]]; then
+        echo "$hash"
+        return 0
+    fi
+
+    # Method 2: mkpasswd (common on Linux)
+    if command -v mkpasswd &>/dev/null; then
+        hash=$(printf '%s' "$password" | mkpasswd -m sha-512 -S "$salt" --stdin 2>/dev/null)
+        if [[ -n "$hash" && "$hash" == '$6$'* ]]; then
+            echo "$hash"
+            return 0
+        fi
+    fi
+
+    # Method 3: python3 with passlib (cross-platform, recommended)
+    if command -v python3 &>/dev/null; then
+        hash=$(printf '%s' "$password" | python3 -c "
+import sys
+try:
+    from passlib.hash import sha512_crypt
+    password = sys.stdin.read()
+    print(sha512_crypt.using(rounds=5000).hash(password))
+except ImportError:
+    sys.exit(1)
+" 2>/dev/null)
+        if [[ -n "$hash" && "$hash" == '$6$'* ]]; then
+            echo "$hash"
+            return 0
+        fi
+    fi
+
+    # Method 4: python3 with crypt module (deprecated in 3.11, removed in 3.13+)
+    if command -v python3 &>/dev/null; then
+        hash=$(printf '%s' "$password" | python3 -c "
+import sys
+try:
+    import crypt
+    password = sys.stdin.read()
+    print(crypt.crypt(password, '\$6\$$salt\$'))
+except (ImportError, OSError):
+    sys.exit(1)
+" 2>/dev/null)
+        if [[ -n "$hash" && "$hash" == '$6$'* ]]; then
+            echo "$hash"
+            return 0
+        fi
+    fi
+
+    # Method 5: perl (works on Linux, macOS perl doesn't support $6$)
+    if command -v perl &>/dev/null; then
+        hash=$(HASH_PASSWORD="$password" HASH_SALT="$salt" perl -e '
+            my $pass = $ENV{"HASH_PASSWORD"};
+            my $salt = $ENV{"HASH_SALT"};
+            print crypt($pass, "\$6\$${salt}\$");
+        ' 2>/dev/null)
+        if [[ -n "$hash" && "$hash" == '$6$'* ]]; then
+            echo "$hash"
+            return 0
+        fi
+    fi
+
+    # Method 6: SHA-256 fallback (openssl -5)
+    if hash=$(printf '%s' "$password" | openssl passwd -5 -salt "$salt" -stdin 2>/dev/null) && [[ -n "$hash" && "$hash" == '$5$'* ]]; then
+        log_warn "Using SHA-256 instead of SHA-512 (install passlib: pip3 install passlib)"
+        echo "$hash"
+        return 0
+    fi
+
+    # Method 7: MD5 fallback (weak but widely supported)
+    local salt_short="${salt:0:8}"
+    if hash=$(printf '%s' "$password" | openssl passwd -1 -salt "$salt_short" -stdin 2>/dev/null) && [[ -n "$hash" && "$hash" == '$1$'* ]]; then
+        log_warn "Using MD5 password hash (weak). Install passlib for SHA-512: pip3 install passlib"
+        echo "$hash"
+        return 0
+    fi
+
+    # No method worked
+    log_error "No working password hashing method found."
+    log_error "Install one of: passlib (pip3 install passlib), openssl 1.1.1+, or mkpasswd"
+    return 1
+}
+
+# Wrapper that dies on hash failure (for use outside subshells)
+require_hash_password() {
+    local password="$1"
+    local hash
+    if ! hash=$(hash_password "$password"); then
+        die "Failed to hash password"
+    fi
+    if [[ -z "$hash" ]]; then
+        die "Password hash is empty"
+    fi
+    echo "$hash"
+}
+
+# Convert dotted quad netmask to CIDR prefix length
+# e.g., 255.255.255.0 -> 24, 255.255.0.0 -> 16
+netmask_to_cidr() {
+    local netmask="$1"
+    local cidr=0
+    local octet
+
+    # Handle already-CIDR input (just a number)
+    if [[ "$netmask" =~ ^[0-9]+$ && "$netmask" -ge 0 && "$netmask" -le 32 ]]; then
+        echo "$netmask"
+        return 0
+    fi
+
+    IFS='.' read -ra octets <<< "$netmask"
+    for octet in "${octets[@]}"; do
+        case "$octet" in
+            255) ((cidr += 8)) ;;
+            254) ((cidr += 7)) ;;
+            252) ((cidr += 6)) ;;
+            248) ((cidr += 5)) ;;
+            240) ((cidr += 4)) ;;
+            224) ((cidr += 3)) ;;
+            192) ((cidr += 2)) ;;
+            128) ((cidr += 1)) ;;
+            0)   ;;
+            *)   log_warn "Invalid netmask octet: $octet"; echo "24"; return 1 ;;
+        esac
+    done
+    echo "$cidr"
+}
+
+get_distro_format() {
+    echo "${DISTRO_FORMATS[$DISTRO]:-unknown}"
+}
+
+get_default_mirror() {
+    echo "${DISTRO_MIRRORS[$DISTRO]:-}"
+}
+
+get_default_release() {
+    local releases="${DISTRO_RELEASES[$DISTRO]:-}"
+    echo "${releases%% *}"
+}
+
+get_output_filename() {
+    local format
+    format=$(get_distro_format)
+    case "$format" in
+        preseed)        echo "preseed.cfg" ;;
+        autoinstall)    echo "user-data" ;;
+        kickstart)      echo "ks.cfg" ;;
+        archinstall)    echo "archinstall.json" ;;
+        autoyast)       echo "autoinst.xml" ;;
+        alpine-answers) echo "answers" ;;
+        void-installer) echo "void-install.sh" ;;
+        nixos-config)   echo "configuration.nix" ;;
+        *)              echo "install.cfg" ;;
+    esac
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                                   USAGE                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+show_banner() {
+    printf "${CYAN}"
+    cat <<'BANNER'
+   ____            _       _   _  ___     _     _       
+  / ___|  ___ _ __(_)_ __ | |_| |/ (_) __| | __| |_   _ 
+  \___ \ / __| '__| | '_ \| __| ' /| |/ _` |/ _` | | | |
+   ___) | (__| |  | | |_) | |_| . \| | (_| | (_| | |_| |
+  |____/ \___|_|  |_| .__/ \__|_|\_\_|\__,_|\__,_|\__, |
+                    |_|                           |___/ 
+BANNER
+    printf "${RESET}"
+    printf "${DIM}  Universal Linux Installation Generator v%s${RESET}\n\n" "$VERSION"
+}
+
+usage() {
+    show_banner
+    cat <<EOF
+${BOLD}USAGE:${RESET}
+    $SCRIPT_NAME --distro <distro> [OPTIONS]
+    $SCRIPT_NAME --interactive
+    $SCRIPT_NAME --list-distros
+
+${BOLD}SUPPORTED DISTRIBUTIONS:${RESET}
+    ${CYAN}debian${RESET}         Debian (preseed)
+    ${CYAN}ubuntu${RESET}         Ubuntu 20.04+ (autoinstall)
+    ${CYAN}ubuntu-legacy${RESET}  Ubuntu <20.04 (preseed)
+    ${CYAN}fedora${RESET}         Fedora (kickstart)
+    ${CYAN}rhel${RESET}           Red Hat Enterprise Linux (kickstart)
+    ${CYAN}centos${RESET}         CentOS Stream (kickstart)
+    ${CYAN}rocky${RESET}          Rocky Linux (kickstart)
+    ${CYAN}alma${RESET}           AlmaLinux (kickstart)
+    ${CYAN}arch${RESET}           Arch Linux (archinstall)
+    ${CYAN}opensuse${RESET}       openSUSE (autoyast)
+    ${CYAN}alpine${RESET}         Alpine Linux (setup-alpine)
+    ${CYAN}void${RESET}           Void Linux (installer script)
+    ${CYAN}nixos${RESET}          NixOS (configuration.nix)
+
+${BOLD}DISTRO OPTIONS:${RESET}
+    -D, --distro DISTRO     Target distribution (required)
+    -R, --release VERSION   Distribution release/version
+        --list-distros      List all supported distros and formats
+
+${BOLD}SYSTEM OPTIONS:${RESET}
+    -h, --hostname NAME     System hostname (default: linux)
+        --domain DOMAIN     Domain name
+    -t, --timezone TZ       Timezone (default: UTC)
+    -l, --locale LOCALE     System locale (default: en_US.UTF-8)
+    -k, --keyboard LAYOUT   Keyboard layout (default: us)
+    -m, --mirror URL        Package mirror URL
+
+${BOLD}USER OPTIONS:${RESET}
+    -u, --user USERNAME     Non-root username (default: user)
+        --fullname NAME     User's full name
+    -p, --password PASS     User password (prompted if omitted)
+        --enable-root       Enable root account
+        --root-password     Root password
+
+${BOLD}DISK OPTIONS:${RESET}
+    -d, --disk DEVICE       Target disk (default: /dev/sda)
+    -f, --filesystem FS     Filesystem: ext4, btrfs, xfs (default: ext4)
+    -b, --boot-mode MODE    Boot mode: efi, bios (default: efi)
+        --lvm               Use LVM for partitioning
+        --encrypt           Enable full disk encryption
+        --encrypt-pass      Encryption passphrase
+        --swap SIZE         Swap size in MB (default: 4096, 0=disable)
+        --no-btrfs-subvols  Disable btrfs subvolumes
+
+${BOLD}DESKTOP OPTIONS:${RESET}
+    -e, --de DESKTOP        Desktop environment:
+                            gnome, kde, xfce, lxqt, cinnamon, mate,
+                            budgie, i3, sway, cosmic, none
+
+${BOLD}PACKAGE OPTIONS:${RESET}
+        --packages PKG,...  Additional packages (comma-separated)
+        --groups GROUP,...  Package groups to install
+
+${BOLD}NETWORK OPTIONS:${RESET}
+        --network TYPE      Network: dhcp, static (default: dhcp)
+        --ip ADDRESS        Static IP address
+        --netmask MASK      Subnet mask (default: 255.255.255.0)
+        --gateway IP        Default gateway
+        --dns SERVERS       DNS servers (space-separated)
+        --wifi SSID         WiFi SSID
+        --wifi-pass PASS    WiFi password
+
+${BOLD}SSH OPTIONS:${RESET}
+        --no-ssh            Disable SSH server
+        --ssh-port PORT     SSH port (default: 22)
+        --ssh-key KEY       SSH public key string
+        --ssh-key-file F    SSH public key file
+        --ssh-root          Allow root SSH login
+
+${BOLD}SECURITY OPTIONS:${RESET}
+        --firewall          Enable firewall
+        --selinux MODE      SELinux mode: enforcing, permissive, disabled
+                            (RHEL/Fedora only, default: enforcing)
+
+${BOLD}POST-INSTALL:${RESET}
+        --post-script CMD   Post-install commands
+        --post-file FILE    Post-install script file
+
+${BOLD}OUTPUT OPTIONS:${RESET}
+    -o, --output FILE       Output file (auto-detected if omitted)
+        --dry-run           Preview without writing file
+    -v, --verbose           Enable verbose output
+
+${BOLD}MODE OPTIONS:${RESET}
+    -i, --interactive       Interactive configuration wizard
+        --profile NAME      Load saved profile
+        --save-profile NAME Save configuration as profile
+        --list-profiles     List saved profiles
+        --version           Show version
+        --help              Show this help
+
+${BOLD}EXAMPLES:${RESET}
+    # Debian with GNOME desktop
+    $SCRIPT_NAME --distro debian --de gnome --hostname workstation
+
+    # Ubuntu Server with static IP
+    $SCRIPT_NAME --distro ubuntu --network static --ip 192.168.1.100 \\
+                 --gateway 192.168.1.1
+
+    # Fedora with encrypted btrfs
+    $SCRIPT_NAME --distro fedora --filesystem btrfs --encrypt
+
+    # Arch Linux minimal
+    $SCRIPT_NAME --distro arch --de none
+
+    # Rocky Linux server
+    $SCRIPT_NAME --distro rocky --release 9 --de none --firewall
+
+    # Interactive mode
+    $SCRIPT_NAME --interactive
+
+EOF
+    exit 0
+}
+
+list_distros() {
+    show_banner
+    printf "${BOLD}Supported Distributions:${RESET}\n\n"
+    printf "%-15s %-15s %-30s\n" "DISTRO" "FORMAT" "RELEASES"
+    printf "%-15s %-15s %-30s\n" "-------" "-------" "--------"
+    for distro in debian ubuntu ubuntu-legacy fedora rhel centos rocky alma arch opensuse alpine void nixos; do
+        local format="${DISTRO_FORMATS[$distro]:-unknown}"
+        local releases="${DISTRO_RELEASES[$distro]:-}"
+        printf "%-15s %-15s %-30s\n" "$distro" "$format" "$releases"
+    done
+    printf "\n"
+    exit 0
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                           INTERACTIVE MODE                                    ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+select_menu() {
+    local title="$1"
+    shift
+    local options=("$@")
+    local i=1
+
+    printf "\n${BOLD}%s:${RESET}\n" "$title"
+    for opt in "${options[@]}"; do
+        printf "  %d) %s\n" "$i" "$opt"
+        ((i++))
+    done
+    printf "\nChoice [1]: "
+    read -r choice
+    echo "${choice:-1}"
+}
+
+interactive_select_distro() {
+    local choice
+    choice=$(select_menu "Select distribution" \
+        "Debian" "Ubuntu (20.04+)" "Ubuntu (legacy)" \
+        "Fedora" "RHEL" "CentOS Stream" "Rocky Linux" "AlmaLinux" \
+        "Arch Linux" "openSUSE" "Alpine Linux" "Void Linux" "NixOS")
+
+    case "$choice" in
+        1)  DISTRO="debian" ;;
+        2)  DISTRO="ubuntu" ;;
+        3)  DISTRO="ubuntu-legacy" ;;
+        4)  DISTRO="fedora" ;;
+        5)  DISTRO="rhel" ;;
+        6)  DISTRO="centos" ;;
+        7)  DISTRO="rocky" ;;
+        8)  DISTRO="alma" ;;
+        9)  DISTRO="arch" ;;
+        10) DISTRO="opensuse" ;;
+        11) DISTRO="alpine" ;;
+        12) DISTRO="void" ;;
+        13) DISTRO="nixos" ;;
+        *)  DISTRO="debian" ;;
+    esac
+
+    # Select release
+    local releases="${DISTRO_RELEASES[$DISTRO]:-}"
+    if [[ -n "$releases" ]]; then
+        local release_arr
+        IFS=' ' read -ra release_arr <<< "$releases"
+        if [[ ${#release_arr[@]} -gt 1 ]]; then
+            local rel_choice
+            rel_choice=$(select_menu "Select ${DISTRO} release" "${release_arr[@]}")
+            if [[ "$rel_choice" =~ ^[0-9]+$ ]] && ((rel_choice >= 1 && rel_choice <= ${#release_arr[@]})); then
+                RELEASE="${release_arr[$((rel_choice-1))]}"
+            else
+                RELEASE="${release_arr[0]}"
+            fi
+        else
+            RELEASE="${release_arr[0]}"
+        fi
+    fi
+}
+
+interactive_select_de() {
+    local choice
+    choice=$(select_menu "Select desktop environment" \
+        "GNOME" "KDE Plasma" "Xfce" "LXQt" "Cinnamon" "MATE" "Budgie" \
+        "i3 (tiling WM)" "Sway (Wayland)" "COSMIC" "None (minimal)")
+
+    case "$choice" in
+        1)  DE="gnome" ;;
+        2)  DE="kde" ;;
+        3)  DE="xfce" ;;
+        4)  DE="lxqt" ;;
+        5)  DE="cinnamon" ;;
+        6)  DE="mate" ;;
+        7)  DE="budgie" ;;
+        8)  DE="i3" ;;
+        9)  DE="sway" ;;
+        10) DE="cosmic" ;;
+        11) DE="none" ;;
+        *)  DE="none" ;;
+    esac
+}
+
+interactive_select_filesystem() {
+    local choice
+    choice=$(select_menu "Select filesystem" "ext4" "btrfs" "xfs")
+
+    case "$choice" in
+        1) FILESYSTEM="ext4" ;;
+        2) FILESYSTEM="btrfs" ;;
+        3) FILESYSTEM="xfs" ;;
+        *) FILESYSTEM="ext4" ;;
+    esac
+
+    if [[ "$FILESYSTEM" == "btrfs" ]]; then
+        prompt_yesno "Enable btrfs subvolumes (@, @home, @snapshots)?" "y" && BTRFS_SUBVOLS=1 || BTRFS_SUBVOLS=0
+    fi
+}
+
+interactive_mode() {
+    show_banner
+    printf "${BOLD}Interactive Configuration Wizard${RESET}\n"
+    printf "${DIM}Press Enter to accept defaults${RESET}\n"
+
+    # Distro selection
+    printf "\n${MAGENTA}═══ Distribution ═══${RESET}\n"
+    interactive_select_distro
+
+    # System
+    printf "\n${MAGENTA}═══ System Configuration ═══${RESET}\n"
+    prompt HOSTNAME  "Hostname"  "$HOSTNAME"
+    prompt DOMAIN    "Domain (optional)" "$DOMAIN"
+    prompt TIMEZONE  "Timezone"  "$TIMEZONE"
+    prompt LOCALE    "Locale"    "$LOCALE"
+
+    # Keyboard
+    local kb_choice
+    kb_choice=$(select_menu "Keyboard layout" "us" "gb" "de" "fr" "es" "it" "Other...")
+    case "$kb_choice" in
+        1) KEYBOARD="us" ;;
+        2) KEYBOARD="gb" ;;
+        3) KEYBOARD="de" ;;
+        4) KEYBOARD="fr" ;;
+        5) KEYBOARD="es" ;;
+        6) KEYBOARD="it" ;;
+        7) prompt KEYBOARD "Enter keyboard layout" "us" ;;
+        *) KEYBOARD="us" ;;
+    esac
+
+    # User
+    printf "\n${MAGENTA}═══ User Configuration ═══${RESET}\n"
+    prompt USERNAME "Username" "$USERNAME"
+    prompt FULLNAME "Full name" "${FULLNAME:-$USERNAME}"
+    prompt_password PASSWORD "User password"
+    [[ -z "$PASSWORD" ]] && die "Password cannot be empty"
+
+    if prompt_yesno "Enable root account?" "n"; then
+        ENABLE_ROOT=1
+        prompt_password ROOT_PASSWORD "Root password"
+    fi
+
+    # Disk
+    printf "\n${MAGENTA}═══ Disk Configuration ═══${RESET}\n"
+    prompt DISK "Target disk" "$DISK"
+    interactive_select_filesystem
+
+    local boot_choice
+    boot_choice=$(select_menu "Boot mode" "EFI (UEFI)" "BIOS (Legacy)")
+    [[ "$boot_choice" == "2" ]] && BOOT_MODE="bios" || BOOT_MODE="efi"
+
+    if prompt_yesno "Use LVM?" "n"; then
+        USE_LVM=1
+    fi
+
+    if prompt_yesno "Enable disk encryption?" "n"; then
+        USE_ENCRYPTION=1
+        prompt_password ENCRYPTION_PASSWORD "Encryption passphrase"
+    fi
+
+    prompt SWAP_SIZE "Swap size (MB, 0=disable)" "$SWAP_SIZE"
+
+    # Desktop
+    printf "\n${MAGENTA}═══ Desktop ═══${RESET}\n"
+    interactive_select_de
+
+    # Network
+    printf "\n${MAGENTA}═══ Network ═══${RESET}\n"
+    local net_choice
+    net_choice=$(select_menu "Network configuration" "DHCP (automatic)" "Static IP" "WiFi")
+    case "$net_choice" in
+        1) NETWORK_TYPE="dhcp" ;;
+        2)
+            NETWORK_TYPE="static"
+            prompt STATIC_IP "IP address" ""
+            prompt STATIC_NETMASK "Netmask" "$STATIC_NETMASK"
+            prompt STATIC_GATEWAY "Gateway" ""
+            prompt STATIC_DNS "DNS servers" "$STATIC_DNS"
+            ;;
+        3)
+            NETWORK_TYPE="dhcp"
+            prompt WIFI_SSID "WiFi SSID" ""
+            prompt_password WIFI_PASSWORD "WiFi password"
+            ;;
+    esac
+
+    # SSH
+    printf "\n${MAGENTA}═══ SSH ═══${RESET}\n"
+    if prompt_yesno "Enable SSH server?" "y"; then
+        SSH_ENABLE=1
+        prompt SSH_PORT "SSH port" "$SSH_PORT"
+        if prompt_yesno "Add SSH public key?" "n"; then
+            printf "${CYAN}Enter SSH public key (or path to file):${RESET} "
+            read -r key_input
+            if [[ -f "$key_input" ]]; then
+                SSH_PUBKEY_FILE="$key_input"
+            else
+                SSH_PUBKEY="$key_input"
+            fi
+        fi
+    else
+        SSH_ENABLE=0
+    fi
+
+    # Security
+    printf "\n${MAGENTA}═══ Security ═══${RESET}\n"
+    prompt_yesno "Enable firewall?" "n" && ENABLE_FIREWALL=1
+
+    # Packages
+    printf "\n${MAGENTA}═══ Packages ═══${RESET}\n"
+    prompt EXTRA_PACKAGES "Additional packages (comma-separated)" ""
+
+    # Output
+    printf "\n${MAGENTA}═══ Output ═══${RESET}\n"
+    local default_output
+    default_output=$(get_output_filename)
+    prompt OUTPUT "Output file" "$default_output"
+
+    if prompt_yesno "Save this configuration as a profile?" "n"; then
+        prompt SAVE_PROFILE "Profile name" ""
+    fi
+
+    printf "\n"
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         PROFILE MANAGEMENT                                    ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+list_profiles() {
+    ensure_dir "$PROFILES_DIR"
+    printf "\n${BOLD}Saved Profiles:${RESET}\n"
+    if [[ -z "$(ls -A "$PROFILES_DIR" 2>/dev/null)" ]]; then
+        printf "  ${DIM}(no profiles found)${RESET}\n"
+    else
+        for profile in "$PROFILES_DIR"/*; do
+            local name
+            name=$(basename "$profile")
+            local distro=""
+            distro=$(grep "^DISTRO=" "$profile" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)
+            printf "  ${CYAN}%s${RESET}" "$name"
+            [[ -n "$distro" ]] && printf " (%s)" "$distro"
+            printf "\n"
+        done
+    fi
+    exit 0
+}
+
+save_profile() {
+    local name="$1"
+
+    # Sanitize profile name: reject path traversal and absolute paths
+    if [[ "$name" == */* || "$name" == *..* || "$name" == -* || -z "$name" ]]; then
+        die "Invalid profile name: '${name}' (must not contain '/', '..', or start with '-')"
+    fi
+
+    ensure_dir "$PROFILES_DIR"
+    local profile_file="${PROFILES_DIR}/${name}"
+
+    cat > "$profile_file" <<PROFILE
+# scriptkiddy profile: ${name}
+# Generated: $(date -Iseconds)
+
+DISTRO="${DISTRO}"
+RELEASE="${RELEASE}"
+MIRROR="${MIRROR}"
+TIMEZONE="${TIMEZONE}"
+LOCALE="${LOCALE}"
+KEYBOARD="${KEYBOARD}"
+HOSTNAME="${HOSTNAME}"
+DOMAIN="${DOMAIN}"
+USERNAME="${USERNAME}"
+FULLNAME="${FULLNAME}"
+PASSWORD="${PASSWORD}"
+ROOT_PASSWORD="${ROOT_PASSWORD}"
+ENABLE_ROOT="${ENABLE_ROOT}"
+DISK="${DISK}"
+FILESYSTEM="${FILESYSTEM}"
+BOOT_MODE="${BOOT_MODE}"
+USE_LVM="${USE_LVM}"
+USE_ENCRYPTION="${USE_ENCRYPTION}"
+ENCRYPTION_PASSWORD="${ENCRYPTION_PASSWORD}"
+SWAP_SIZE="${SWAP_SIZE}"
+EFI_SIZE="${EFI_SIZE}"
+BOOT_SIZE="${BOOT_SIZE}"
+BTRFS_SUBVOLS="${BTRFS_SUBVOLS}"
+DE="${DE}"
+EXTRA_PACKAGES="${EXTRA_PACKAGES}"
+PACKAGE_GROUPS="${PACKAGE_GROUPS}"
+NETWORK_TYPE="${NETWORK_TYPE}"
+STATIC_IP="${STATIC_IP}"
+STATIC_NETMASK="${STATIC_NETMASK}"
+STATIC_GATEWAY="${STATIC_GATEWAY}"
+STATIC_DNS="${STATIC_DNS}"
+WIFI_SSID="${WIFI_SSID}"
+WIFI_PASSWORD="${WIFI_PASSWORD}"
+SSH_ENABLE="${SSH_ENABLE}"
+SSH_PORT="${SSH_PORT}"
+SSH_PERMIT_ROOT="${SSH_PERMIT_ROOT}"
+SSH_PUBKEY="${SSH_PUBKEY}"
+SSH_PUBKEY_FILE="${SSH_PUBKEY_FILE}"
+ENABLE_FIREWALL="${ENABLE_FIREWALL}"
+ENABLE_SELINUX="${ENABLE_SELINUX}"
+SELINUX_MODE="${SELINUX_MODE}"
+POST_SCRIPT="${POST_SCRIPT}"
+POST_SCRIPT_FILE="${POST_SCRIPT_FILE}"
+PROFILE
+
+    log_info "Profile saved: ${profile_file}"
+}
+
+load_profile() {
+    local name="$1"
+
+    # Sanitize profile name: reject path traversal and absolute paths
+    if [[ "$name" == */* || "$name" == *..* || "$name" == -* || -z "$name" ]]; then
+        die "Invalid profile name: '${name}' (must not contain '/', '..', or start with '-')"
+    fi
+
+    local profile_file="${PROFILES_DIR}/${name}"
+
+    # Verify resolved path is within profiles directory (defense in depth)
+    local resolved_path
+    resolved_path="$(cd "$PROFILES_DIR" 2>/dev/null && realpath -m "$name" 2>/dev/null)" || true
+    if [[ -z "$resolved_path" || "$resolved_path" != "${PROFILES_DIR}/"* ]]; then
+        die "Invalid profile path: ${name}"
+    fi
+
+    [[ -f "$profile_file" ]] || die "Profile not found: ${name}"
+    log_info "Loading profile: ${name}"
+    # shellcheck source=/dev/null
+    source "$profile_file"
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: DEBIAN PRESEED                             ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_preseed() {
+    local password_hash
+    password_hash=$(require_hash_password "$PASSWORD")
+
+    local root_password_hash=""
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
+        root_password_hash=$(require_hash_password "$ROOT_PASSWORD")
+    fi
+
+    local mirror_hostname
+    mirror_hostname="${MIRROR#http://}"
+    mirror_hostname="${mirror_hostname#https://}"
+    mirror_hostname="${mirror_hostname%%/*}"
+
+    local packages="sudo"
+    [[ "$SSH_ENABLE" -eq 1 ]] && packages="$packages openssh-server"
+    [[ "$ENABLE_FIREWALL" -eq 1 ]] && packages="$packages ufw"
+    [[ "$FILESYSTEM" == "btrfs" ]] && packages="$packages btrfs-progs"
+    [[ "$FILESYSTEM" == "xfs" ]] && packages="$packages xfsprogs"
+    [[ "$USE_ENCRYPTION" -eq 1 ]] && packages="$packages cryptsetup cryptsetup-initramfs"
+    packages="$packages firmware-linux"
+
+    # Desktop packages
+    case "$DE" in
+        gnome)    packages="$packages task-gnome-desktop" ;;
+        kde)      packages="$packages task-kde-desktop" ;;
+        xfce)     packages="$packages task-xfce-desktop" ;;
+        lxqt)     packages="$packages task-lxqt-desktop" ;;
+        cinnamon) packages="$packages task-cinnamon-desktop" ;;
+        mate)     packages="$packages task-mate-desktop" ;;
+        budgie)   packages="$packages budgie-desktop" ;;
+        i3)       packages="$packages i3 i3status dmenu" ;;
+        sway)     packages="$packages sway swaylock waybar" ;;
+    esac
+
+    [[ -n "$EXTRA_PACKAGES" ]] && packages="$packages ${EXTRA_PACKAGES//,/ }"
+
+    cat <<PRESEED
+################################################################################
+# Debian Preseed Configuration
+# Generated by: scriptkiddy v${VERSION}
+# Distribution: ${DISTRO} ${RELEASE}
+################################################################################
+
+### Locale ###
+d-i debian-installer/locale string ${LOCALE}
+d-i keyboard-configuration/xkb-keymap select ${KEYBOARD}
+d-i console-setup/ask_detect boolean false
+
+### Network ###
+d-i netcfg/choose_interface select auto
+d-i netcfg/get_hostname string ${HOSTNAME}
+d-i netcfg/get_domain string ${DOMAIN}
+d-i hw-detect/load_firmware boolean true
+PRESEED
+
+    if [[ "$NETWORK_TYPE" == "static" ]]; then
+        cat <<PRESEED
+
+d-i netcfg/disable_autoconfig boolean true
+d-i netcfg/get_ipaddress string ${STATIC_IP}
+d-i netcfg/get_netmask string ${STATIC_NETMASK}
+d-i netcfg/get_gateway string ${STATIC_GATEWAY}
+d-i netcfg/get_nameservers string ${STATIC_DNS}
+d-i netcfg/confirm_static boolean true
+PRESEED
+    fi
+
+    cat <<PRESEED
+
+### Mirror ###
+d-i mirror/country string manual
+d-i mirror/http/hostname string ${mirror_hostname}
+d-i mirror/http/directory string /debian
+d-i mirror/http/proxy string
+d-i mirror/suite string ${RELEASE:-sid}
+
+### Clock ###
+d-i clock-setup/utc boolean true
+d-i time/zone string ${TIMEZONE}
+d-i clock-setup/ntp boolean true
+
+### Partitioning ###
+d-i partman-auto/disk string ${DISK}
+d-i partman-auto/method string $([ "$USE_ENCRYPTION" -eq 1 ] && echo "crypto" || echo "regular")
+d-i partman-auto/choose_recipe select atomic
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+d-i partman/choose_partition select finish
+PRESEED
+
+    if [[ "$BOOT_MODE" == "efi" ]]; then
+        echo "d-i partman-efi/non_efi_system boolean true"
+    fi
+
+    if [[ "$USE_ENCRYPTION" -eq 1 ]]; then
+        cat <<PRESEED
+
+d-i partman-crypto/passphrase string ${ENCRYPTION_PASSWORD}
+d-i partman-crypto/passphrase-again string ${ENCRYPTION_PASSWORD}
+PRESEED
+    fi
+
+    cat <<PRESEED
+
+### User Account ###
+d-i passwd/root-login boolean $([ "$ENABLE_ROOT" -eq 1 ] && echo "true" || echo "false")
+d-i passwd/user-fullname string ${FULLNAME:-$USERNAME}
+d-i passwd/username string ${USERNAME}
+d-i passwd/user-password-crypted string ${password_hash}
+d-i user-setup/allow-password-weak boolean true
+PRESEED
+
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$root_password_hash" ]]; then
+        echo "d-i passwd/root-password-crypted string ${root_password_hash}"
+    fi
+
+    cat <<PRESEED
+
+### APT ###
+d-i apt-setup/non-free-firmware boolean true
+d-i apt-setup/non-free boolean true
+d-i apt-setup/contrib boolean true
+d-i apt-setup/use_mirror boolean true
+
+### Packages ###
+tasksel tasksel/first multiselect standard
+d-i pkgsel/include string ${packages}
+d-i pkgsel/upgrade select full-upgrade
+popularity-contest popularity-contest/participate boolean false
+
+### Bootloader ###
+d-i grub-installer/only_debian boolean true
+d-i grub-installer/with_other_os boolean true
+d-i grub-installer/bootdev string ${DISK}
+
+### Late Commands ###
+d-i preseed/late_command string \\
+    in-target bash -c 'echo "${USERNAME} ALL=(ALL:ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}'; \\
+    in-target chmod 440 /etc/sudoers.d/${USERNAME}$([ "$SSH_ENABLE" -eq 1 ] && echo "; \\
+    in-target systemctl enable ssh")
+
+### Finish ###
+d-i finish-install/reboot_in_progress note
+PRESEED
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: UBUNTU AUTOINSTALL                         ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_autoinstall() {
+    local password_hash
+    password_hash=$(require_hash_password "$PASSWORD")
+
+    local packages="[]"
+    local pkg_list=""
+    [[ "$SSH_ENABLE" -eq 1 ]] && pkg_list="openssh-server"
+    [[ "$ENABLE_FIREWALL" -eq 1 ]] && pkg_list="$pkg_list ufw"
+    [[ -n "$EXTRA_PACKAGES" ]] && pkg_list="$pkg_list ${EXTRA_PACKAGES//,/ }"
+
+    if [[ -n "$pkg_list" ]]; then
+        packages="["
+        for pkg in $pkg_list; do
+            packages="$packages\"$pkg\", "
+        done
+        packages="${packages%, }]"
+    fi
+
+    cat <<AUTOINSTALL
+#cloud-config
+autoinstall:
+  version: 1
+  locale: ${LOCALE}
+  keyboard:
+    layout: ${KEYBOARD}
+  identity:
+    hostname: ${HOSTNAME}
+    username: ${USERNAME}
+    password: "${password_hash}"
+  ssh:
+    install-server: $([ "$SSH_ENABLE" -eq 1 ] && echo "true" || echo "false")
+    allow-pw: true
+AUTOINSTALL
+
+    if [[ -n "$SSH_PUBKEY" || -n "$SSH_PUBKEY_FILE" ]]; then
+        local key="${SSH_PUBKEY}"
+        [[ -n "$SSH_PUBKEY_FILE" && -f "$SSH_PUBKEY_FILE" ]] && key=$(cat "$SSH_PUBKEY_FILE")
+        cat <<AUTOINSTALL
+    authorized-keys:
+      - "${key}"
+AUTOINSTALL
+    fi
+
+    cat <<AUTOINSTALL
+  storage:
+    layout:
+      name: $([ "$USE_LVM" -eq 1 ] && echo "lvm" || echo "direct")
+AUTOINSTALL
+
+    if [[ "$USE_ENCRYPTION" -eq 1 ]]; then
+        cat <<AUTOINSTALL
+      password: "${ENCRYPTION_PASSWORD}"
+AUTOINSTALL
+    fi
+
+    if [[ "$NETWORK_TYPE" == "static" ]]; then
+        local cidr_prefix
+        cidr_prefix=$(netmask_to_cidr "$STATIC_NETMASK")
+        cat <<AUTOINSTALL
+  network:
+    version: 2
+    ethernets:
+      any:
+        match:
+          name: "en*"
+        addresses:
+          - ${STATIC_IP}/${cidr_prefix}
+        gateway4: ${STATIC_GATEWAY}
+        nameservers:
+          addresses: [${STATIC_DNS// /, }]
+AUTOINSTALL
+    fi
+
+    cat <<AUTOINSTALL
+  packages: ${packages}
+  timezone: ${TIMEZONE}
+  late-commands:
+    - echo '${USERNAME} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/${USERNAME}
+    - chmod 440 /target/etc/sudoers.d/${USERNAME}
+AUTOINSTALL
+
+    # Snaps for desktop
+    if [[ -n "$DE" && "$DE" != "none" ]]; then
+        cat <<AUTOINSTALL
+  snaps:
+AUTOINSTALL
+        case "$DE" in
+            gnome)  echo "    - name: gnome-3-38-2004" ;;
+            kde)    echo "    - name: kde-frameworks-5-qt-5-15-core20" ;;
+        esac
+    fi
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: KICKSTART                                  ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_kickstart() {
+    local password_hash
+    password_hash=$(require_hash_password "$PASSWORD")
+
+    local root_password_hash=""
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
+        root_password_hash=$(require_hash_password "$ROOT_PASSWORD")
+    fi
+
+    cat <<KICKSTART
+#version=RHEL9
+# Kickstart configuration
+# Generated by: scriptkiddy v${VERSION}
+# Distribution: ${DISTRO} ${RELEASE}
+
+# Use graphical or text install
+$([ -n "$DE" ] && [ "$DE" != "none" ] && echo "graphical" || echo "text")
+
+# System language
+lang ${LOCALE}
+
+# Keyboard layout
+keyboard --xlayouts='${KEYBOARD}'
+
+# Network configuration
+KICKSTART
+
+    if [[ "$NETWORK_TYPE" == "static" ]]; then
+        cat <<KICKSTART
+network --bootproto=static --ip=${STATIC_IP} --netmask=${STATIC_NETMASK} --gateway=${STATIC_GATEWAY} --nameserver=${STATIC_DNS// /,} --hostname=${HOSTNAME} --activate
+KICKSTART
+    else
+        cat <<KICKSTART
+network --bootproto=dhcp --hostname=${HOSTNAME} --activate
+KICKSTART
+    fi
+
+    cat <<KICKSTART
+
+# Root password
+KICKSTART
+
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$root_password_hash" ]]; then
+        echo "rootpw --iscrypted ${root_password_hash}"
+    else
+        echo "rootpw --lock"
+    fi
+
+    cat <<KICKSTART
+
+# User account
+user --name=${USERNAME} --password=${password_hash} --iscrypted --groups=wheel
+
+# Timezone
+timezone ${TIMEZONE} --utc
+
+# Bootloader
+bootloader --location=mbr --boot-drive=${DISK##*/}
+
+# Partition clearing
+clearpart --all --initlabel --drives=${DISK##*/}
+
+# Disk partitioning
+KICKSTART
+
+    if [[ "$USE_LVM" -eq 1 ]]; then
+        cat <<KICKSTART
+autopart --type=lvm$([ "$USE_ENCRYPTION" -eq 1 ] && echo " --encrypted --passphrase=${ENCRYPTION_PASSWORD}")$([ "$FILESYSTEM" == "btrfs" ] && echo " --fstype=btrfs")
+KICKSTART
+    else
+        cat <<KICKSTART
+autopart$([ "$USE_ENCRYPTION" -eq 1 ] && echo " --encrypted --passphrase=${ENCRYPTION_PASSWORD}")$([ "$FILESYSTEM" == "btrfs" ] && echo " --fstype=btrfs")
+KICKSTART
+    fi
+
+    cat <<KICKSTART
+
+# SELinux
+selinux --${SELINUX_MODE}
+
+# Firewall
+KICKSTART
+
+    if [[ "$ENABLE_FIREWALL" -eq 1 ]]; then
+        echo "firewall --enabled --ssh"
+    else
+        echo "firewall --disabled"
+    fi
+
+    cat <<KICKSTART
+
+# Services
+services --enabled="chronyd$([ "$SSH_ENABLE" -eq 1 ] && echo ",sshd")"
+
+# Package selection
+%packages
+@^$([ -n "$DE" ] && [ "$DE" != "none" ] && echo "${DE}-desktop-environment" || echo "minimal-environment")
+KICKSTART
+
+    # Add common packages
+    [[ "$SSH_ENABLE" -eq 1 ]] && echo "openssh-server"
+    echo "sudo"
+
+    # Extra packages
+    if [[ -n "$EXTRA_PACKAGES" ]]; then
+        for pkg in ${EXTRA_PACKAGES//,/ }; do
+            echo "$pkg"
+        done
+    fi
+
+    cat <<KICKSTART
+%end
+
+# Post-installation script
+%post --log=/root/ks-post.log
+# Enable passwordless sudo for user
+echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}
+chmod 440 /etc/sudoers.d/${USERNAME}
+KICKSTART
+
+    if [[ -n "$SSH_PUBKEY" || -n "$SSH_PUBKEY_FILE" ]]; then
+        local key="${SSH_PUBKEY}"
+        [[ -n "$SSH_PUBKEY_FILE" && -f "$SSH_PUBKEY_FILE" ]] && key=$(cat "$SSH_PUBKEY_FILE")
+        cat <<KICKSTART
+
+# Add SSH key
+mkdir -p /home/${USERNAME}/.ssh
+echo "${key}" >> /home/${USERNAME}/.ssh/authorized_keys
+chmod 700 /home/${USERNAME}/.ssh
+chmod 600 /home/${USERNAME}/.ssh/authorized_keys
+chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh
+KICKSTART
+    fi
+
+    if [[ -n "$POST_SCRIPT" ]]; then
+        printf "\n# Custom post-install script\n%s\n" "$POST_SCRIPT"
+    fi
+
+    cat <<KICKSTART
+%end
+
+# Reboot after installation
+reboot
+KICKSTART
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: ARCHINSTALL                                ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_archinstall() {
+    local password_hash
+    password_hash=$(require_hash_password "$PASSWORD")
+
+    local root_password_hash="null"
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
+        root_password_hash="\"$(require_hash_password "$ROOT_PASSWORD")\""
+    fi
+
+    # Escape values for JSON
+    local j_hostname j_username j_disk j_timezone j_keyboard j_locale j_enc_pass j_static_ip j_gateway j_dns
+    j_hostname=$(escape_json "$HOSTNAME")
+    j_username=$(escape_json "$USERNAME")
+    j_disk=$(escape_json "$DISK")
+    j_timezone=$(escape_json "$TIMEZONE")
+    j_keyboard=$(escape_json "$KEYBOARD")
+    j_locale=$(escape_json "$LOCALE")
+    j_enc_pass=$(escape_json "$ENCRYPTION_PASSWORD")
+    j_static_ip=$(escape_json "$STATIC_IP")
+    j_gateway=$(escape_json "$STATIC_GATEWAY")
+    j_dns=$(escape_json "${STATIC_DNS%% *}")
+
+    # Build packages array
+    local packages="\"base\", \"base-devel\", \"linux\", \"linux-firmware\", \"sudo\""
+    [[ "$SSH_ENABLE" -eq 1 ]] && packages="$packages, \"openssh\""
+    [[ "$ENABLE_FIREWALL" -eq 1 ]] && packages="$packages, \"ufw\""
+    [[ "$FILESYSTEM" == "btrfs" ]] && packages="$packages, \"btrfs-progs\""
+
+    # Desktop packages
+    case "$DE" in
+        gnome)    packages="$packages, \"gnome\", \"gdm\"" ;;
+        kde)      packages="$packages, \"plasma\", \"sddm\"" ;;
+        xfce)     packages="$packages, \"xfce4\", \"lightdm\"" ;;
+        i3)       packages="$packages, \"i3-wm\", \"i3status\", \"dmenu\", \"lightdm\"" ;;
+        sway)     packages="$packages, \"sway\", \"swaylock\", \"waybar\"" ;;
+    esac
+
+    if [[ -n "$EXTRA_PACKAGES" ]]; then
+        for pkg in ${EXTRA_PACKAGES//,/ }; do
+            packages="$packages, \"$pkg\""
+        done
+    fi
+
+    cat <<ARCHINSTALL
+{
+    "config_version": "2.6.0",
+    "additional-repositories": [],
+    "archinstall-language": "English",
+    "audio_config": null,
+    "bootloader": "$([ "$BOOT_MODE" == "efi" ] && echo "systemd-bootctl" || echo "grub-install")",
+    "debug": false,
+    "disk_config": {
+        "config_type": "default_layout",
+        "device_modifications": [
+            {
+                "device": "${j_disk}",
+                "partitions": [],
+                "wipe": true
+            }
+        ]
+    },
+    "disk_encryption": $([ "$USE_ENCRYPTION" -eq 1 ] && echo "{
+        \"encryption_type\": \"luks\",
+        \"partitions\": [\"${j_disk}\"],
+        \"encryption_password\": \"${j_enc_pass}\"
+    }" || echo "null"),
+    "hostname": "${j_hostname}",
+    "kernels": ["linux"],
+    "locale_config": {
+        "kb_layout": "${j_keyboard}",
+        "sys_enc": "UTF-8",
+        "sys_lang": "${j_locale}"
+    },
+    "mirror_config": {
+        "custom_mirrors": [],
+        "mirror_regions": {}
+    },
+    "network_config": $([ "$NETWORK_TYPE" == "static" ] && echo "{
+        \"type\": \"manual\",
+        \"iface\": null,
+        \"ip\": \"${j_static_ip}\",
+        \"gateway\": \"${j_gateway}\",
+        \"dns\": [\"${j_dns}\"]
+    }" || echo "{\"type\": \"nm\"}"),
+    "no_pkg_lookups": false,
+    "ntp": true,
+    "packages": [${packages}],
+    "parallel_downloads": 5,
+    "profile_config": $([ -n "$DE" ] && [ "$DE" != "none" ] && echo "{
+        \"gfx_driver\": \"All open-source\",
+        \"greeter\": \"$(case "$DE" in gnome) echo "gdm";; kde) echo "sddm";; *) echo "lightdm";; esac)\",
+        \"profile\": {
+            \"main\": \"Desktop\",
+            \"details\": [\"$(echo "$DE" | sed 's/.*/\u&/')\"]
+        }
+    }" || echo "null"),
+    "script": null,
+    "silent": true,
+    "swap": $([ "$SWAP_SIZE" -gt 0 ] && echo "true" || echo "false"),
+    "timezone": "${j_timezone}",
+    "uki": false,
+    "!users": [
+        {
+            "username": "${j_username}",
+            "!password": "${password_hash}",
+            "sudo": true
+        }
+    ],
+    "!root-password": ${root_password_hash},
+    "version": "2.6.0"
+}
+ARCHINSTALL
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: AUTOYAST (OPENSUSE)                        ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_autoyast() {
+    local password_hash
+    password_hash=$(require_hash_password "$PASSWORD")
+
+    # Escape values for XML
+    local x_hostname x_domain x_username x_fullname x_keyboard x_timezone x_locale x_disk x_filesystem
+    x_hostname=$(escape_xml "$HOSTNAME")
+    x_domain=$(escape_xml "$DOMAIN")
+    x_username=$(escape_xml "$USERNAME")
+    x_fullname=$(escape_xml "${FULLNAME:-$USERNAME}")
+    x_keyboard=$(escape_xml "$KEYBOARD")
+    x_timezone=$(escape_xml "$TIMEZONE")
+    x_locale=$(escape_xml "$LOCALE")
+    x_disk=$(escape_xml "$DISK")
+    x_filesystem=$(escape_xml "$FILESYSTEM")
+    local x_static_ip x_static_netmask x_static_gateway
+    x_static_ip=$(escape_xml "$STATIC_IP")
+    x_static_netmask=$(escape_xml "$STATIC_NETMASK")
+    x_static_gateway=$(escape_xml "$STATIC_GATEWAY")
+
+    cat <<AUTOYAST
+<?xml version="1.0"?>
+<!DOCTYPE profile>
+<!--
+  AutoYaST Configuration
+  Generated by: scriptkiddy v${VERSION}
+  Distribution: ${DISTRO} ${RELEASE}
+-->
+<profile xmlns="http://www.suse.com/1.0/yast2ns" xmlns:config="http://www.suse.com/1.0/configns">
+  <general>
+    <mode>
+      <confirm config:type="boolean">false</confirm>
+      <final_reboot config:type="boolean">true</final_reboot>
+    </mode>
+  </general>
+
+  <keyboard>
+    <keymap>${x_keyboard}</keymap>
+  </keyboard>
+
+  <language>
+    <language>${x_locale%%.*}</language>
+    <languages>${x_locale%%.*}</languages>
+  </language>
+
+  <timezone>
+    <hwclock>UTC</hwclock>
+    <timezone>${x_timezone}</timezone>
+  </timezone>
+
+  <networking>
+    <keep_install_network config:type="boolean">true</keep_install_network>
+    <dns>
+      <hostname>${x_hostname}</hostname>
+      <domain>${x_domain}</domain>
+    </dns>
+AUTOYAST
+
+    if [[ "$NETWORK_TYPE" == "static" ]]; then
+        cat <<AUTOYAST
+    <interfaces config:type="list">
+      <interface>
+        <bootproto>static</bootproto>
+        <device>eth0</device>
+        <ipaddr>${x_static_ip}</ipaddr>
+        <netmask>${x_static_netmask}</netmask>
+        <startmode>auto</startmode>
+      </interface>
+    </interfaces>
+    <routing>
+      <ip_forward config:type="boolean">false</ip_forward>
+      <routes config:type="list">
+        <route>
+          <destination>default</destination>
+          <gateway>${x_static_gateway}</gateway>
+          <device>eth0</device>
+        </route>
+      </routes>
+    </routing>
+AUTOYAST
+    fi
+
+    cat <<AUTOYAST
+  </networking>
+
+  <users config:type="list">
+    <user>
+      <username>${x_username}</username>
+      <user_password>${password_hash}</user_password>
+      <encrypted config:type="boolean">true</encrypted>
+      <fullname>${x_fullname}</fullname>
+      <home>/home/${x_username}</home>
+      <shell>/bin/bash</shell>
+    </user>
+AUTOYAST
+
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
+        local root_hash
+        root_hash=$(require_hash_password "$ROOT_PASSWORD")
+        cat <<AUTOYAST
+    <user>
+      <username>root</username>
+      <user_password>${root_hash}</user_password>
+      <encrypted config:type="boolean">true</encrypted>
+    </user>
+AUTOYAST
+    fi
+
+    cat <<AUTOYAST
+  </users>
+
+  <partitioning config:type="list">
+    <drive>
+      <device>${x_disk}</device>
+      <initialize config:type="boolean">true</initialize>
+      <use>all</use>
+      <partitions config:type="list">
+AUTOYAST
+
+    if [[ "$BOOT_MODE" == "efi" ]]; then
+        cat <<AUTOYAST
+        <partition>
+          <mount>/boot/efi</mount>
+          <size>${EFI_SIZE}M</size>
+          <partition_id config:type="integer">259</partition_id>
+          <filesystem config:type="symbol">vfat</filesystem>
+        </partition>
+AUTOYAST
+    fi
+
+    if [[ "$SWAP_SIZE" -gt 0 ]]; then
+        cat <<AUTOYAST
+        <partition>
+          <mount>swap</mount>
+          <size>${SWAP_SIZE}M</size>
+          <filesystem config:type="symbol">swap</filesystem>
+        </partition>
+AUTOYAST
+    fi
+
+    cat <<AUTOYAST
+        <partition>
+          <mount>/</mount>
+          <size>max</size>
+          <filesystem config:type="symbol">${x_filesystem}</filesystem>
+        </partition>
+      </partitions>
+    </drive>
+  </partitioning>
+
+  <software>
+    <patterns config:type="list">
+      <pattern>base</pattern>
+AUTOYAST
+
+    case "$DE" in
+        gnome)    echo "      <pattern>gnome</pattern>" ;;
+        kde)      echo "      <pattern>kde</pattern>" ;;
+        xfce)     echo "      <pattern>xfce</pattern>" ;;
+    esac
+
+    cat <<AUTOYAST
+    </patterns>
+    <packages config:type="list">
+      <package>sudo</package>
+AUTOYAST
+
+    [[ "$SSH_ENABLE" -eq 1 ]] && echo "      <package>openssh</package>"
+    [[ "$ENABLE_FIREWALL" -eq 1 ]] && echo "      <package>firewalld</package>"
+
+    if [[ -n "$EXTRA_PACKAGES" ]]; then
+        for pkg in ${EXTRA_PACKAGES//,/ }; do
+            echo "      <package>$pkg</package>"
+        done
+    fi
+
+    cat <<AUTOYAST
+    </packages>
+  </software>
+
+  <services-manager>
+    <default_target>$([ -n "$DE" ] && [ "$DE" != "none" ] && echo "graphical" || echo "multi-user")</default_target>
+    <services>
+      <enable config:type="list">
+AUTOYAST
+
+    [[ "$SSH_ENABLE" -eq 1 ]] && echo "        <service>sshd</service>"
+    [[ "$ENABLE_FIREWALL" -eq 1 ]] && echo "        <service>firewalld</service>"
+
+    cat <<AUTOYAST
+      </enable>
+    </services>
+  </services-manager>
+
+  <scripts>
+    <post-scripts config:type="list">
+      <script>
+        <filename>setup.sh</filename>
+        <source><![CDATA[#!/bin/bash
+echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}
+chmod 440 /etc/sudoers.d/${USERNAME}
+]]></source>
+      </script>
+    </post-scripts>
+  </scripts>
+</profile>
+AUTOYAST
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: ALPINE ANSWERS                             ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_alpine() {
+    cat <<ALPINE
+# Alpine Linux setup-alpine answers file
+# Generated by: scriptkiddy v${VERSION}
+
+# Keyboard layout
+KEYMAPOPTS="${KEYBOARD} ${KEYBOARD}"
+
+# Hostname
+HOSTNAMEOPTS="-n ${HOSTNAME}"
+
+# Network (interface:dhcp|address/netmask:gateway)
+ALPINE
+
+    if [[ "$NETWORK_TYPE" == "static" ]]; then
+        local cidr_prefix
+        cidr_prefix=$(netmask_to_cidr "$STATIC_NETMASK")
+        echo "INTERFACESOPTS=\"eth0:${STATIC_IP}/${cidr_prefix}:${STATIC_GATEWAY}\""
+    else
+        echo "INTERFACESOPTS=\"auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet dhcp
+\""
+    fi
+
+    cat <<ALPINE
+
+# DNS
+DNSOPTS="-d ${DOMAIN:-localdomain} ${STATIC_DNS:-8.8.8.8}"
+
+# Timezone
+TIMEZONEOPTS="-z ${TIMEZONE}"
+
+# Proxy (none or URL)
+PROXYOPTS="none"
+
+# APK mirror
+APKREPOSOPTS="-1"
+
+# SSH server (openssh, dropbear, none)
+SSHDOPTS="$([ "$SSH_ENABLE" -eq 1 ] && echo "openssh" || echo "none")"
+
+# NTP client (busybox, openntpd, chrony, none)
+NTPOPTS="-c chrony"
+
+# Disk mode (sys, data, lvm, lvmsys, lvmdata)
+DISKOPTS="-m $([ "$USE_LVM" -eq 1 ] && echo "lvmsys" || echo "sys") ${DISK}"
+
+# Filesystem
+LBUOPTS="none"
+APKCACHEOPTS="/var/cache/apk"
+
+# Root password (plaintext, will be hashed by setup-alpine)
+# Note: For automation, consider using setup-alpine -e with encrypted password
+ALPINE
+
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
+        echo "# Root password will be set during installation"
+    fi
+
+    # Post-install script section
+    cat <<ALPINE
+
+# Additional setup (run manually after setup-alpine completes):
+# adduser -D ${USERNAME}
+# echo "${USERNAME}:PASSWORD" | chpasswd
+# echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME}
+# apk add sudo$([ -n "$DE" ] && [ "$DE" != "none" ] && echo " ${DE}-desktop")
+ALPINE
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: VOID INSTALLER                             ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_void() {
+    cat <<'VOID'
+#!/bin/bash
+#
+# Void Linux Installation Script
+VOID
+    cat <<VOID
+# Generated by: scriptkiddy v${VERSION}
+#
+set -euo pipefail
+
+# Configuration
+DISK="${DISK}"
+HOSTNAME="${HOSTNAME}"
+TIMEZONE="${TIMEZONE}"
+LOCALE="${LOCALE}"
+KEYBOARD="${KEYBOARD}"
+USERNAME="${USERNAME}"
+FILESYSTEM="${FILESYSTEM}"
+BOOT_MODE="${BOOT_MODE}"
+SWAP_SIZE="${SWAP_SIZE}"
+USE_ENCRYPTION=${USE_ENCRYPTION}
+
+echo "=== Void Linux Installation ==="
+echo "Target disk: \${DISK}"
+echo "WARNING: This will ERASE all data on \${DISK}"
+read -p "Continue? [y/N] " confirm
+[[ "\$confirm" != "y" ]] && exit 1
+
+# Partition the disk
+echo ">>> Partitioning disk..."
+if [[ "\$BOOT_MODE" == "efi" ]]; then
+    parted -s "\${DISK}" mklabel gpt
+    parted -s "\${DISK}" mkpart ESP fat32 1MiB ${EFI_SIZE}MiB
+    parted -s "\${DISK}" set 1 esp on
+    parted -s "\${DISK}" mkpart primary linux-swap ${EFI_SIZE}MiB $((EFI_SIZE + SWAP_SIZE))MiB
+    parted -s "\${DISK}" mkpart primary \${FILESYSTEM} $((EFI_SIZE + SWAP_SIZE))MiB 100%
+    
+    EFI_PART="\${DISK}1"
+    SWAP_PART="\${DISK}2"
+    ROOT_PART="\${DISK}3"
+else
+    parted -s "\${DISK}" mklabel msdos
+    parted -s "\${DISK}" mkpart primary linux-swap 1MiB ${SWAP_SIZE}MiB
+    parted -s "\${DISK}" mkpart primary \${FILESYSTEM} ${SWAP_SIZE}MiB 100%
+    parted -s "\${DISK}" set 2 boot on
+    
+    SWAP_PART="\${DISK}1"
+    ROOT_PART="\${DISK}2"
+fi
+
+# Format partitions
+echo ">>> Formatting partitions..."
+[[ "\$BOOT_MODE" == "efi" ]] && mkfs.fat -F32 "\${EFI_PART}"
+mkswap "\${SWAP_PART}"
+swapon "\${SWAP_PART}"
+
+case "\${FILESYSTEM}" in
+    btrfs) mkfs.btrfs -f "\${ROOT_PART}" ;;
+    xfs)   mkfs.xfs -f "\${ROOT_PART}" ;;
+    *)     mkfs.ext4 -F "\${ROOT_PART}" ;;
+esac
+
+# Mount
+echo ">>> Mounting filesystems..."
+mount "\${ROOT_PART}" /mnt
+[[ "\$BOOT_MODE" == "efi" ]] && mkdir -p /mnt/boot/efi && mount "\${EFI_PART}" /mnt/boot/efi
+
+# Install base system
+echo ">>> Installing base system..."
+REPO=https://repo-default.voidlinux.org/current
+ARCH=x86_64
+
+XBPS_ARCH=\$ARCH xbps-install -Sy -r /mnt -R "\$REPO" \\
+    base-system grub$([ "$BOOT_MODE" == "efi" ] && echo "-x86_64-efi") \\
+    $([ "$SSH_ENABLE" -eq 1 ] && echo "openssh") \\
+    sudo ${EXTRA_PACKAGES//,/ }
+
+# Generate fstab
+echo ">>> Generating fstab..."
+cat > /mnt/etc/fstab <<FSTAB
+# <file system> <dir> <type> <options> <dump> <pass>
+\${ROOT_PART}  /     \${FILESYSTEM}  defaults  0 1
+\${SWAP_PART}  swap  swap    defaults  0 0
+FSTAB
+[[ "\$BOOT_MODE" == "efi" ]] && echo "\${EFI_PART}  /boot/efi  vfat  defaults  0 2" >> /mnt/etc/fstab
+
+# Configure system
+echo ">>> Configuring system..."
+echo "\${HOSTNAME}" > /mnt/etc/hostname
+echo "TIMEZONE=\"\${TIMEZONE}\"" > /mnt/etc/rc.conf
+echo "KEYMAP=\"\${KEYBOARD}\"" >> /mnt/etc/rc.conf
+
+# Chroot and finalize
+echo ">>> Finalizing installation..."
+cat > /mnt/tmp/setup.sh <<'SETUP'
+#!/bin/bash
+# Set root password
+VOID
+    if [[ "$ENABLE_ROOT" -eq 1 && -n "$ROOT_PASSWORD" ]]; then
+        echo "echo 'root:${ROOT_PASSWORD}' | chpasswd"
+    else
+        echo "passwd -l root"
+    fi
+    cat <<VOID
+
+# Create user
+useradd -m -G wheel -s /bin/bash ${USERNAME}
+echo '${USERNAME}:${PASSWORD}' | chpasswd
+echo '${USERNAME} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${USERNAME}
+chmod 440 /etc/sudoers.d/${USERNAME}
+
+# Enable services
+ln -s /etc/sv/dhcpcd /var/service/
+VOID
+    [[ "$SSH_ENABLE" -eq 1 ]] && echo "ln -s /etc/sv/sshd /var/service/"
+    cat <<VOID
+
+# Install bootloader
+if [[ "\$BOOT_MODE" == "efi" ]]; then
+    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=void
+else
+    grub-install "\${DISK}"
+fi
+grub-mkconfig -o /boot/grub/grub.cfg
+SETUP
+
+xchroot /mnt /bin/bash /tmp/setup.sh
+rm /mnt/tmp/setup.sh
+
+# Cleanup
+echo ">>> Cleaning up..."
+umount -R /mnt
+swapoff "\${SWAP_PART}"
+
+echo "=== Installation complete! ==="
+echo "Reboot to start your new Void Linux system."
+VOID
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                         GENERATOR: NIXOS CONFIG                               ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_nixos() {
+    cat <<NIXOS
+# NixOS Configuration
+# Generated by: scriptkiddy v${VERSION}
+#
+# Install with:
+#   sudo nixos-install --root /mnt --flake .#${HOSTNAME}
+#
+# Or copy to /mnt/etc/nixos/configuration.nix and run:
+#   sudo nixos-install
+
+{ config, pkgs, ... }:
+
+{
+  imports = [
+    ./hardware-configuration.nix
+  ];
+
+  # Bootloader
+  boot.loader = {
+NIXOS
+
+    if [[ "$BOOT_MODE" == "efi" ]]; then
+        cat <<NIXOS
+    systemd-boot.enable = true;
+    efi.canTouchEfiVariables = true;
+NIXOS
+    else
+        cat <<NIXOS
+    grub.enable = true;
+    grub.device = "${DISK}";
+NIXOS
+    fi
+
+    cat <<NIXOS
+  };
+
+  # Networking
+  networking = {
+    hostName = "${HOSTNAME}";
+NIXOS
+
+    if [[ -n "$DOMAIN" ]]; then
+        echo "    domain = \"${DOMAIN}\";"
+    fi
+
+    if [[ "$NETWORK_TYPE" == "static" ]]; then
+        cat <<NIXOS
+    interfaces.eth0.ipv4.addresses = [{
+      address = "${STATIC_IP}";
+      prefixLength = 24;
+    }];
+    defaultGateway = "${STATIC_GATEWAY}";
+    nameservers = [ "${STATIC_DNS%% *}" ];
+NIXOS
+    else
+        echo "    networkmanager.enable = true;"
+    fi
+
+    if [[ "$ENABLE_FIREWALL" -eq 1 ]]; then
+        cat <<NIXOS
+    firewall = {
+      enable = true;
+      allowedTCPPorts = [ ${SSH_PORT} ];
+    };
+NIXOS
+    else
+        echo "    firewall.enable = false;"
+    fi
+
+    cat <<NIXOS
+  };
+
+  # Timezone and locale
+  time.timeZone = "${TIMEZONE}";
+  i18n.defaultLocale = "${LOCALE}";
+  console.keyMap = "${KEYBOARD}";
+
+  # Users
+  users.users.${USERNAME} = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "networkmanager" ];
+    initialPassword = "changeme";  # Change after first login!
+NIXOS
+
+    if [[ -n "$SSH_PUBKEY" || -n "$SSH_PUBKEY_FILE" ]]; then
+        local key="${SSH_PUBKEY}"
+        [[ -n "$SSH_PUBKEY_FILE" && -f "$SSH_PUBKEY_FILE" ]] && key=$(cat "$SSH_PUBKEY_FILE")
+        cat <<NIXOS
+    openssh.authorizedKeys.keys = [
+      "${key}"
+    ];
+NIXOS
+    fi
+
+    cat <<NIXOS
+  };
+
+  # Allow unfree packages
+  nixpkgs.config.allowUnfree = true;
+
+  # System packages
+  environment.systemPackages = with pkgs; [
+    vim
+    git
+    wget
+    curl
+    htop
+NIXOS
+
+    if [[ -n "$EXTRA_PACKAGES" ]]; then
+        for pkg in ${EXTRA_PACKAGES//,/ }; do
+            echo "    $pkg"
+        done
+    fi
+
+    cat <<NIXOS
+  ];
+
+  # Services
+  services = {
+NIXOS
+
+    if [[ "$SSH_ENABLE" -eq 1 ]]; then
+        cat <<NIXOS
+    openssh = {
+      enable = true;
+      settings = {
+        PermitRootLogin = "$([ "$SSH_PERMIT_ROOT" == "yes" ] && echo "yes" || echo "no")";
+        PasswordAuthentication = true;
+      };
+      ports = [ ${SSH_PORT} ];
+    };
+NIXOS
+    fi
+
+    # Desktop environment
+    case "$DE" in
+        gnome)
+            cat <<NIXOS
+    xserver = {
+      enable = true;
+      displayManager.gdm.enable = true;
+      desktopManager.gnome.enable = true;
+    };
+NIXOS
+            ;;
+        kde)
+            cat <<NIXOS
+    xserver.enable = true;
+    displayManager.sddm.enable = true;
+    desktopManager.plasma5.enable = true;
+NIXOS
+            ;;
+        xfce)
+            cat <<NIXOS
+    xserver = {
+      enable = true;
+      displayManager.lightdm.enable = true;
+      desktopManager.xfce.enable = true;
+    };
+NIXOS
+            ;;
+        i3)
+            cat <<NIXOS
+    xserver = {
+      enable = true;
+      displayManager.lightdm.enable = true;
+      windowManager.i3.enable = true;
+    };
+NIXOS
+            ;;
+        sway)
+            cat <<NIXOS
+    # Sway (Wayland)
+NIXOS
+            echo "  };"
+            echo ""
+            echo "  programs.sway.enable = true;"
+            ;;
+    esac
+
+    [[ "$DE" != "sway" ]] && echo "  };"
+
+    cat <<NIXOS
+
+  # Security
+  security.sudo.wheelNeedsPassword = false;
+
+  # This value determines the NixOS release
+  system.stateVersion = "${RELEASE:-24.05}";
+}
+NIXOS
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                              MAIN GENERATOR                                   ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+generate_config() {
+    local format content
+    format=$(get_distro_format)
+
+    log_debug "Generating ${format} configuration for ${DISTRO}"
+
+    case "$format" in
+        preseed)        content=$(generate_preseed) ;;
+        autoinstall)    content=$(generate_autoinstall) ;;
+        kickstart)      content=$(generate_kickstart) ;;
+        archinstall)    content=$(generate_archinstall) ;;
+        autoyast)       content=$(generate_autoyast) ;;
+        alpine-answers) content=$(generate_alpine) ;;
+        void-installer) content=$(generate_void) ;;
+        nixos-config)   content=$(generate_nixos) ;;
+        *)              die "Unknown format: $format" ;;
+    esac
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf "\n${BOLD}═══ Generated Configuration (${format}) ═══${RESET}\n\n"
+        echo "$content"
+        printf "\n${BOLD}═══ End of Configuration ═══${RESET}\n"
+    else
+        echo "$content" > "$OUTPUT"
+        log_info "Configuration written to: ${OUTPUT}"
+    fi
+
+    print_summary
+}
+
+print_summary() {
+    local format
+    format=$(get_distro_format)
+
+    printf "\n${BOLD}╔══════════════════════════════════════════════════════════╗${RESET}\n"
+    printf "${BOLD}║                  Configuration Summary                    ║${RESET}\n"
+    printf "${BOLD}╚══════════════════════════════════════════════════════════╝${RESET}\n\n"
+
+    printf "${BOLD}Distribution:${RESET}\n"
+    printf "  %-14s %s\n" "Distro:" "$DISTRO"
+    printf "  %-14s %s\n" "Release:" "${RELEASE:-default}"
+    printf "  %-14s %s\n" "Format:" "$format"
+
+    printf "\n${BOLD}System:${RESET}\n"
+    printf "  %-14s %s\n" "Hostname:" "$HOSTNAME"
+    printf "  %-14s %s\n" "Timezone:" "$TIMEZONE"
+    printf "  %-14s %s\n" "Locale:" "$LOCALE"
+
+    printf "\n${BOLD}User:${RESET}\n"
+    printf "  %-14s %s\n" "Username:" "$USERNAME"
+    printf "  %-14s %s\n" "Root enabled:" "$([ "$ENABLE_ROOT" -eq 1 ] && echo "yes" || echo "no")"
+
+    printf "\n${BOLD}Storage:${RESET}\n"
+    printf "  %-14s %s\n" "Disk:" "$DISK"
+    printf "  %-14s %s\n" "Filesystem:" "$FILESYSTEM"
+    printf "  %-14s %s\n" "Boot mode:" "$BOOT_MODE"
+    printf "  %-14s %s\n" "Encryption:" "$([ "$USE_ENCRYPTION" -eq 1 ] && echo "yes" || echo "no")"
+
+    printf "\n${BOLD}Desktop:${RESET}\n"
+    printf "  %-14s %s\n" "Environment:" "${DE:-none}"
+
+    printf "\n${BOLD}Network:${RESET}\n"
+    printf "  %-14s %s\n" "Type:" "$NETWORK_TYPE"
+    [[ "$NETWORK_TYPE" == "static" ]] && printf "  %-14s %s\n" "IP:" "$STATIC_IP"
+
+    printf "\n${BOLD}Output:${RESET}\n"
+    printf "  %-14s %s\n" "File:" "$OUTPUT"
+
+    printf "\n${BOLD}Usage Instructions:${RESET}\n"
+    case "$format" in
+        preseed)
+            printf "  Boot Debian/Ubuntu installer with:\n"
+            printf "    ${DIM}auto url=http://yourserver/${OUTPUT}${RESET}\n"
+            ;;
+        autoinstall)
+            printf "  Create ISO with cloud-init or serve via HTTP:\n"
+            printf "    ${DIM}Place user-data and meta-data in cidata volume${RESET}\n"
+            ;;
+        kickstart)
+            printf "  Boot ${DISTRO} installer with:\n"
+            printf "    ${DIM}inst.ks=http://yourserver/${OUTPUT}${RESET}\n"
+            ;;
+        archinstall)
+            printf "  Run from Arch ISO:\n"
+            printf "    ${DIM}archinstall --config ${OUTPUT}${RESET}\n"
+            ;;
+        autoyast)
+            printf "  Boot openSUSE installer with:\n"
+            printf "    ${DIM}autoyast=http://yourserver/${OUTPUT}${RESET}\n"
+            ;;
+        alpine-answers)
+            printf "  Run setup-alpine with:\n"
+            printf "    ${DIM}setup-alpine -f ${OUTPUT}${RESET}\n"
+            ;;
+        void-installer)
+            printf "  Boot Void Linux live ISO and run:\n"
+            printf "    ${DIM}chmod +x ${OUTPUT} && ./${OUTPUT}${RESET}\n"
+            ;;
+        nixos-config)
+            printf "  Copy to /mnt/etc/nixos/ and run:\n"
+            printf "    ${DIM}nixos-install${RESET}\n"
+            ;;
+    esac
+    printf "\n"
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                           ARGUMENT PARSING                                    ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            # Distro
+            -D|--distro)       DISTRO="$2"; shift 2 ;;
+            -R|--release)      RELEASE="$2"; shift 2 ;;
+            --list-distros)    list_distros ;;
+
+            # System
+            -h|--hostname)     HOSTNAME="$2"; shift 2 ;;
+            --domain)          DOMAIN="$2"; shift 2 ;;
+            -t|--timezone)     TIMEZONE="$2"; shift 2 ;;
+            -l|--locale)       LOCALE="$2"; shift 2 ;;
+            -k|--keyboard)     KEYBOARD="$2"; shift 2 ;;
+            -m|--mirror)       MIRROR="$2"; shift 2 ;;
+
+            # User
+            -u|--user)         USERNAME="$2"; shift 2 ;;
+            --fullname)        FULLNAME="$2"; shift 2 ;;
+            -p|--password)     PASSWORD="$2"; shift 2 ;;
+            --enable-root)     ENABLE_ROOT=1; shift ;;
+            --root-password)   ENABLE_ROOT=1; ROOT_PASSWORD="$2"; shift 2 ;;
+
+            # Disk
+            -d|--disk)         DISK="$2"; shift 2 ;;
+            -f|--filesystem)   FILESYSTEM="$2"; shift 2 ;;
+            -b|--boot-mode)    BOOT_MODE="$2"; shift 2 ;;
+            --lvm)             USE_LVM=1; shift ;;
+            --encrypt)         USE_ENCRYPTION=1; shift ;;
+            --encrypt-pass)    USE_ENCRYPTION=1; ENCRYPTION_PASSWORD="$2"; shift 2 ;;
+            --swap)            SWAP_SIZE="$2"; shift 2 ;;
+            --no-btrfs-subvols) BTRFS_SUBVOLS=0; shift ;;
+
+            # Desktop
+            -e|--de)           DE="$2"; shift 2 ;;
+
+            # Packages
+            --packages)        EXTRA_PACKAGES="$2"; shift 2 ;;
+            --groups)          PACKAGE_GROUPS="$2"; shift 2 ;;
+
+            # Network
+            --network)         NETWORK_TYPE="$2"; shift 2 ;;
+            --ip)              STATIC_IP="$2"; NETWORK_TYPE="static"; shift 2 ;;
+            --netmask)         STATIC_NETMASK="$2"; shift 2 ;;
+            --gateway)         STATIC_GATEWAY="$2"; shift 2 ;;
+            --dns)             STATIC_DNS="$2"; shift 2 ;;
+            --wifi)            WIFI_SSID="$2"; shift 2 ;;
+            --wifi-pass)       WIFI_PASSWORD="$2"; shift 2 ;;
+
+            # SSH
+            --no-ssh)          SSH_ENABLE=0; shift ;;
+            --ssh-port)        SSH_PORT="$2"; shift 2 ;;
+            --ssh-key)         SSH_PUBKEY="$2"; shift 2 ;;
+            --ssh-key-file)    SSH_PUBKEY_FILE="$2"; shift 2 ;;
+            --ssh-root)        SSH_PERMIT_ROOT="yes"; shift ;;
+
+            # Security
+            --firewall)        ENABLE_FIREWALL=1; shift ;;
+            --selinux)         SELINUX_MODE="$2"; shift 2 ;;
+
+            # Post-install
+            --post-script)     POST_SCRIPT="$2"; shift 2 ;;
+            --post-file)       POST_SCRIPT_FILE="$2"; shift 2 ;;
+
+            # Output
+            -o|--output)       OUTPUT="$2"; shift 2 ;;
+            --dry-run)         DRY_RUN=1; shift ;;
+            -v|--verbose)      VERBOSE=1; shift ;;
+
+            # Mode
+            -i|--interactive)  INTERACTIVE=1; shift ;;
+            --profile)         PROFILE="$2"; shift 2 ;;
+            --save-profile)    SAVE_PROFILE="$2"; shift 2 ;;
+            --list-profiles)   list_profiles ;;
+            --version)         echo "scriptkiddy v${VERSION}"; exit 0 ;;
+            --help)            usage ;;
+            *)                 die "Unknown option: $1. Use --help for usage." ;;
+        esac
+    done
+}
+
+validate_inputs() {
+    # Validate distro
+    if [[ -z "${DISTRO_FORMATS[$DISTRO]:-}" ]]; then
+        die "Unknown distribution: $DISTRO. Use --list-distros to see supported distros."
+    fi
+
+    # Set defaults based on distro
+    [[ -z "$MIRROR" ]] && MIRROR=$(get_default_mirror)
+    [[ -z "$RELEASE" ]] && RELEASE=$(get_default_release)
+    [[ -z "$OUTPUT" ]] && OUTPUT=$(get_output_filename)
+
+    # Validate filesystem
+    case "$FILESYSTEM" in
+        ext4|btrfs|xfs) ;;
+        *) die "Invalid filesystem: $FILESYSTEM" ;;
+    esac
+
+    # Validate boot mode
+    case "$BOOT_MODE" in
+        efi|bios) ;;
+        *) die "Invalid boot mode: $BOOT_MODE" ;;
+    esac
+
+    # Validate network
+    if [[ "$NETWORK_TYPE" == "static" ]]; then
+        [[ -z "$STATIC_IP" ]] && die "Static IP required with --network static"
+    fi
+
+    # Encryption password
+    if [[ "$USE_ENCRYPTION" -eq 1 && -z "$ENCRYPTION_PASSWORD" && "$INTERACTIVE" -eq 0 ]]; then
+        printf "${CYAN}Encryption passphrase:${RESET} "
+        read -rs ENCRYPTION_PASSWORD
+        printf "\n"
+    fi
+
+    # Password hashing tools
+    if ! command -v openssl &>/dev/null && \
+       ! command -v python3 &>/dev/null && \
+       ! command -v perl &>/dev/null && \
+       ! command -v mkpasswd &>/dev/null; then
+        die "No password hashing tool found. Install openssl, python3, perl, or mkpasswd."
+    fi
+
+    log_debug "Validation complete"
+}
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║                                  MAIN                                         ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+main() {
+    ensure_dir "$CONFIG_DIR"
+    ensure_dir "$PROFILES_DIR"
+
+    parse_args "$@"
+
+    # Load profile if specified
+    if [[ -n "$PROFILE" ]]; then
+        load_profile "$PROFILE"
+        parse_args "$@"  # Re-parse for overrides
+    fi
+
+    # Interactive mode
+    if [[ "$INTERACTIVE" -eq 1 ]]; then
+        interactive_mode
+    fi
+
+    # Require distro selection
+    if [[ -z "$DISTRO" && "$INTERACTIVE" -eq 0 ]]; then
+        show_banner
+        die "Distribution required. Use --distro <name> or --interactive"
+    fi
+
+    # Prompt for password if not set
+    if [[ -z "${PASSWORD:-}" ]]; then
+        printf "${CYAN}Password for %s:${RESET} " "$USERNAME"
+        read -rs PASSWORD
+        printf "\n"
+        [[ -z "$PASSWORD" ]] && die "Password cannot be empty"
+    fi
+
+    validate_inputs
+
+    # Save profile if requested
+    if [[ -n "$SAVE_PROFILE" ]]; then
+        save_profile "$SAVE_PROFILE"
+    fi
+
+    generate_config
+}
+
+main "$@"

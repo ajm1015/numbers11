@@ -1,0 +1,21 @@
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local env / venv
+.env
+.env.local
+.venv/
+venv/
+
+# Build / install artifacts
+build/
+dist/
+*.log
+
+# Bats
+.bats-tmp/

@@ -14,6 +14,9 @@ fi
 # Local bin
 export PATH="$HOME/.local/bin:$PATH"
 
+# Bash dev environment scripts
+export PATH="$HOME/Documents/GitHub/bash-dev-env/bin:$PATH"
+
 # Node global packages
 export PATH="$HOME/.npm-global/bin:$PATH"
 
