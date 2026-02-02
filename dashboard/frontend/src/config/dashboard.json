@@ -1,0 +1,139 @@
+{
+  "settings": {
+    "title": "Dashboard Console",
+    "refreshInterval": 60000,
+    "theme": "dark"
+  },
+  "machines": [
+    {
+      "id": "homelab-proxmox",
+      "name": "Proxmox Server",
+      "host": "192.168.1.100",
+      "description": "Main virtualization host running Proxmox VE",
+      "tags": ["homelab", "proxmox", "virtualization"],
+      "actions": [
+        {"type": "ssh", "user": "root"},
+        {"type": "web", "url": "https://192.168.1.100:8006"}
+      ],
+      "checkType": "tcp",
+      "checkPort": 8006
+    },
+    {
+      "id": "homelab-nas",
+      "name": "TrueNAS",
+      "host": "192.168.1.101",
+      "description": "Network attached storage for backups and media",
+      "tags": ["homelab", "storage", "truenas"],
+      "actions": [
+        {"type": "ssh", "user": "admin"},
+        {"type": "web", "url": "https://192.168.1.101"}
+      ],
+      "checkType": "tcp",
+      "checkPort": 443
+    },
+    {
+      "id": "docker-host",
+      "name": "Docker Host",
+      "host": "192.168.1.50",
+      "description": "Ubuntu server running Docker containers",
+      "tags": ["homelab", "docker", "ubuntu"],
+      "actions": [
+        {"type": "ssh", "user": "docker"},
+        {"type": "web", "url": "http://192.168.1.50:9000"}
+      ],
+      "checkType": "tcp",
+      "checkPort": 22
+    },
+    {
+      "id": "pi-hole",
+      "name": "Pi-hole DNS",
+      "host": "192.168.1.53",
+      "description": "Network-wide ad blocking",
+      "tags": ["homelab", "dns", "raspberry-pi"],
+      "actions": [
+        {"type": "web", "url": "http://192.168.1.53/admin"}
+      ],
+      "checkType": "tcp",
+      "checkPort": 80
+    }
+  ],
+  "projects": [
+    {
+      "id": "onf-scripts",
+      "name": "ONF Scripts",
+      "description": "PowerShell and Bash automation scripts for system administration",
+      "tags": ["automation", "powershell", "bash"],
+      "links": {
+        "github": "https://github.com/user/onf"
+      },
+      "status": "active"
+    },
+    {
+      "id": "dashboard-console",
+      "name": "Dashboard Console",
+      "description": "Personal management dashboard for machines and projects",
+      "tags": ["react", "python", "docker"],
+      "links": {
+        "github": "https://github.com/user/dashboard"
+      },
+      "status": "wip"
+    },
+    {
+      "id": "zen-dev-setup",
+      "name": "Zen Dev Setup",
+      "description": "Dotfiles and development environment configuration",
+      "tags": ["automation", "bash", "macos"],
+      "links": {
+        "github": "https://github.com/user/zen-dev-setup",
+        "docs": "https://user.github.io/zen-dev-setup"
+      },
+      "status": "active"
+    },
+    {
+      "id": "win11-installer",
+      "name": "Win11 Fast Installer",
+      "description": "Automated Windows 11 deployment scripts",
+      "tags": ["powershell", "automation", "windows"],
+      "links": {
+        "github": "https://github.com/user/win11-installer"
+      },
+      "status": "active"
+    }
+  ],
+  "links": [
+    {
+      "category": "Cloud Consoles",
+      "items": [
+        {"name": "AWS Console", "url": "https://console.aws.amazon.com", "icon": "cloud"},
+        {"name": "Azure Portal", "url": "https://portal.azure.com", "icon": "cloud"},
+        {"name": "Google Cloud", "url": "https://console.cloud.google.com", "icon": "cloud"},
+        {"name": "DigitalOcean", "url": "https://cloud.digitalocean.com", "icon": "cloud"}
+      ]
+    },
+    {
+      "category": "DevOps Tools",
+      "items": [
+        {"name": "GitHub", "url": "https://github.com", "icon": "code"},
+        {"name": "GitLab", "url": "https://gitlab.com", "icon": "code"},
+        {"name": "Docker Hub", "url": "https://hub.docker.com", "icon": "database"},
+        {"name": "Terraform Cloud", "url": "https://app.terraform.io", "icon": "settings"}
+      ]
+    },
+    {
+      "category": "Monitoring",
+      "items": [
+        {"name": "Grafana", "url": "http://192.168.1.50:3000", "icon": "monitor", "description": "Metrics dashboard"},
+        {"name": "Uptime Kuma", "url": "http://192.168.1.50:3001", "icon": "monitor", "description": "Uptime monitoring"},
+        {"name": "Portainer", "url": "http://192.168.1.50:9000", "icon": "terminal", "description": "Container management"}
+      ]
+    },
+    {
+      "category": "Documentation",
+      "items": [
+        {"name": "Notion", "url": "https://notion.so", "icon": "docs"},
+        {"name": "Obsidian Publish", "url": "https://publish.obsidian.md", "icon": "docs"},
+        {"name": "Confluence", "url": "https://confluence.atlassian.com", "icon": "docs"}
+      ]
+    }
+  ]
+}
