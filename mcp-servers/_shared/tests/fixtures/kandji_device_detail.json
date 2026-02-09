@@ -1,0 +1,58 @@
+{
+  "general": {
+    "device_id": "abc12345-1234-5678-abcd-1234567890ab",
+    "device_name": "Jack's MacBook Pro",
+    "platform": "Mac",
+    "system_version": "15.3.1",
+    "assigned_user": {
+      "email": "jack@example.com",
+      "name": "Jack Morton"
+    }
+  },
+  "hardware_overview": {
+    "serial_number": "C02XYZ12345",
+    "model_name": "MacBook Pro (16-inch, 2024)",
+    "model_identifier": "Mac16,1",
+    "processor_name": "Apple M4 Pro",
+    "memory": "36 GB"
+  },
+  "volumes": [
+    {
+      "name": "Macintosh HD",
+      "size": "1 TB",
+      "available_space": "500 GB",
+      "file_system": "APFS"
+    }
+  ],
+  "network": {
+    "local_hostname": "Jacks-MacBook-Pro",
+    "ip_address": "192.168.1.42",
+    "public_ip": "203.0.113.50",
+    "mac_address": "AA:BB:CC:DD:EE:FF"
+  },
+  "filevault": {
+    "filevault_enabled": true,
+    "filevault_prk_escrowed": true
+  },
+  "activation_lock": {
+    "activation_lock_enabled": false,
+    "user_activation_lock_enabled": false
+  },
+  "security_information": {
+    "remote_desktop_enabled": false,
+    "firewall_enabled": true,
+    "sip_enabled": true
+  },
+  "recovery_information": {
+    "recovery_lock_enabled": false
+  },
+  "kandji_agent": {
+    "agent_installed": true,
+    "agent_version": "4.5.0",
+    "last_check_in": "2026-02-09T10:30:00Z"
+  },
+  "automated_device_enrollment": {
+    "dep_eligible": true,
+    "dep_profile_assigned": true
+  }
+}

@@ -1,0 +1,1 @@
+"""Intune MCP resources."""

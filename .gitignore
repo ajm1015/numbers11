@@ -45,3 +45,30 @@ Deployments/*/Source/*.appx
 
 # Testing
 testing/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+mcp-servers/*/.env
+
+# MCP servers
+mcp-servers/*/.pytest_cache/
+mcp-servers/*/__pycache__/

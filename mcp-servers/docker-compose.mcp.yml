@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  mcp-kandji:
+    build:
+      context: .
+      dockerfile: mcp-kandji/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - KANDJI_SUBDOMAIN=${KANDJI_SUBDOMAIN}
+      - KANDJI_API_TOKEN=${KANDJI_API_TOKEN}
+      - KANDJI_REGION=${KANDJI_REGION:-us}
+      - KANDJI_CACHE_TTL=${KANDJI_CACHE_TTL:-300}
+      - TRANSPORT=http
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8001
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  mcp-intune:
+    build:
+      context: .
+      dockerfile: mcp-intune/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - INTUNE_CACHE_TTL=${INTUNE_CACHE_TTL:-300}
+      - GRAPH_API_VERSION=${GRAPH_API_VERSION:-v1.0}
+      - TRANSPORT=http
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8002
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  mcp-mdm-hub:
+    build:
+      context: .
+      dockerfile: mcp-mdm-hub/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - KANDJI_SUBDOMAIN=${KANDJI_SUBDOMAIN}
+      - KANDJI_API_TOKEN=${KANDJI_API_TOKEN}
+      - KANDJI_REGION=${KANDJI_REGION:-us}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - HUB_CACHE_TTL=${HUB_CACHE_TTL:-120}
+      - TRANSPORT=http
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8003
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+networks:
+  mcp-network:
+    driver: bridge
