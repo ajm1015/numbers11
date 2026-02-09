@@ -1,0 +1,33 @@
+[
+  {
+    "device_id": "abc12345-1234-5678-abcd-1234567890ab",
+    "device_name": "Jack's MacBook Pro",
+    "serial_number": "C02XYZ12345",
+    "platform": "Mac",
+    "os_version": "15.3.1",
+    "model": "MacBook Pro (16-inch, 2024)",
+    "last_check_in": "2026-02-09T10:30:00Z",
+    "blueprint_id": "6391086e-85a1-4820-813c-f9c75025fff4",
+    "blueprint_name": "Standard Mac",
+    "asset_tag": "ASSET-001",
+    "mdm_enabled": true,
+    "user": {
+      "email": "jack@example.com",
+      "name": "Jack Morton"
+    }
+  },
+  {
+    "device_id": "def67890-5678-9012-efgh-5678901234cd",
+    "device_name": "Reception iPad",
+    "serial_number": "DLXYZ98765",
+    "platform": "iPad",
+    "os_version": "18.3",
+    "model": "iPad Pro (12.9-inch, 6th gen)",
+    "last_check_in": "2026-02-08T14:15:00Z",
+    "blueprint_id": "7482197f-96b2-5931-924e-g0d86136ggg5",
+    "blueprint_name": "Shared iPad",
+    "asset_tag": null,
+    "mdm_enabled": true,
+    "user": null
+  }
+]

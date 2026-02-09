@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - dashboard-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    networks:
+      - dashboard-network
+    restart: unless-stopped
+    # Uncomment to mount config for easy updates
+    # volumes:
+    #   - ./config:/app/config:ro
+
+networks:
+  dashboard-network:
+    driver: bridge

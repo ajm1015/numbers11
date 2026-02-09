@@ -1,0 +1,33 @@
+# Python artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+
+# Virtual environments
+**/.venv
+**/venv
+
+# Test and dev files
+**/tests
+**/.env
+**/.env.example
+
+# IDE and OS
+**/.idea
+**/.vscode
+**/.DS_Store
+
+# Git
+**/.git
+**/.gitignore
+
+# Docker
+**/Dockerfile
+docker-compose*.yml
+
+# Documentation
+**/*.md
+**/LICENSE
