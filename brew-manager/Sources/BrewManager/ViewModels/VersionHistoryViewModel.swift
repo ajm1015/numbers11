@@ -27,10 +27,7 @@ final class VersionHistoryViewModel: ObservableObject {
         diffContent = nil
 
         do {
-            diffContent = try await git.diffBetween(
-                oldHash: "\(entry.id)~1",
-                newHash: entry.id
-            )
+            diffContent = try await git.diffForCommit(hash: entry.id)
         } catch {
             diffContent = "(Unable to load diff)"
         }

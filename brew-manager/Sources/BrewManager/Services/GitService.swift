@@ -133,6 +133,13 @@ actor GitService {
         )
     }
 
+    func diffForCommit(hash: String) async throws -> String {
+        try validateHash(hash)
+        return try await runner.gitOrThrow(
+            "-C", repoPath, "diff", "\(hash)~1", hash, "--", "Brewfile"
+        )
+    }
+
     func restore(hash: String) async throws {
         try validateHash(hash)
         try await ensureRepo()

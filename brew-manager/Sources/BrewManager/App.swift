@@ -50,10 +50,12 @@ struct BrewManagerApp: App {
                     Button {
                         themeManager.current = theme
                     } label: {
-                        if themeManager.current == theme {
-                            Text("\(theme.rawValue)")
-                        } else {
+                        HStack {
                             Text(theme.rawValue)
+                            if themeManager.current == theme {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
                         }
                     }
                 }
