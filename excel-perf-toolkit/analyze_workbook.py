@@ -103,19 +103,7 @@ def analyze_zip_contents(filepath):
     }, total
 
 
-def find_data_extent(ws):
-    """Find actual last row/col with data (not just formatting)."""
-    max_row = 0
-    max_col = 0
-    for row in ws.iter_rows():
-        for cell in row:
-            if cell.value is not None:
-                max_row = max(max_row, cell.row)
-                max_col = max(max_col, cell.column)
-    return max_row, max_col
-
-
-def analyze_sheet(ws, quick=False):
+def analyze_sheet(ws, quick=False, styles=None):
     """Analyze a single worksheet for bloat indicators."""
     result = {
         'name': ws.title,
@@ -134,6 +122,7 @@ def analyze_sheet(ws, quick=False):
     scanned = 0
     volatile_counter = Counter()
     external_refs = set()
+    collect_styles = styles is not None and len(styles) <= MAX_STYLES_WARN
 
     actual_max_row = 0
     actual_max_col = 0
@@ -147,6 +136,18 @@ def analyze_sheet(ws, quick=False):
                     'message': f'Scan truncated at {cell_limit:,} cells. Sheet may be larger.'
                 })
                 break
+
+            if collect_styles:
+                font, fill = cell.font, cell.fill
+                styles.add((
+                    str(font.color.rgb if font and font.color else ''),
+                    font.size if font else 0,
+                    font.bold if font else False,
+                    str(fill.fgColor.rgb if fill and fill.fgColor else ''),
+                    cell.number_format or '',
+                ))
+                if len(styles) > MAX_STYLES_WARN:
+                    collect_styles = False
 
             if cell.value is not None:
                 result['data_cell_count'] += 1
@@ -269,21 +270,21 @@ def analyze_workbook(filepath, quick=False):
                 'message': f'{len(wb._external_links)} external workbook link(s) — each triggers SMB/network calls on open'
             })
 
-    # Style count — unique format combos (font+fill+border+numfmt) are what create XF records
+    # VBA check
+    if filepath.suffix.lower() == '.xlsm' or zip_info.get('categories', {}).get('vba', 0) > 0:
+        report['issues'].append({
+            'severity': 'info',
+            'message': 'Workbook contains VBA macros — inspect for auto-execute and external calls'
+        })
+
+    # Phase 3: Per-sheet analysis (style counting merged into single cell pass)
     styles = set()
     for ws in wb.worksheets:
-        for row in ws.iter_rows():
-            for cell in row:
-                fmt_key = (
-                    str(cell.font.color.rgb if cell.font.color else '') if cell.font else '',
-                    cell.font.size if cell.font else 0,
-                    cell.font.bold if cell.font else False,
-                    str(cell.fill.fgColor.rgb if cell.fill and cell.fill.fgColor else ''),
-                    cell.number_format or '',
-                )
-                styles.add(fmt_key)
-            if len(styles) > MAX_STYLES_WARN:
-                break
+        sheet_report = analyze_sheet(ws, quick=quick, styles=styles)
+        report['sheets'].append(sheet_report)
+        for issue in sheet_report['issues']:
+            report['summary'][issue['severity']] += 1
+
     report['style_count'] = len(styles)
     if len(styles) > MAX_STYLES_WARN:
         report['issues'].append({
@@ -295,20 +296,6 @@ def analyze_workbook(filepath, quick=False):
             'severity': 'warning',
             'message': f'{len(styles)} unique cell styles (>{MAX_STYLES_OK} can degrade performance)'
         })
-
-    # VBA check
-    if filepath.suffix.lower() == '.xlsm' or zip_info.get('categories', {}).get('vba', 0) > 0:
-        report['issues'].append({
-            'severity': 'info',
-            'message': 'Workbook contains VBA macros — inspect for auto-execute and external calls'
-        })
-
-    # Phase 3: Per-sheet analysis
-    for ws in wb.worksheets:
-        sheet_report = analyze_sheet(ws, quick=quick)
-        report['sheets'].append(sheet_report)
-        for issue in sheet_report['issues']:
-            report['summary'][issue['severity']] += 1
 
     # Count workbook-level issues into summary
     for issue in report['issues']:

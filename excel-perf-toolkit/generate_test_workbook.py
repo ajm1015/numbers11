@@ -46,6 +46,6 @@ wb.defined_names.add(dn)
 dn2 = DefinedName("ExternalLookup", attr_text="='[Budget2023.xlsx]Summary'!A1:D50")
 wb.defined_names.add(dn2)
 
-out = Path("/home/claude/test_bloated.xlsx")
+out = Path(__file__).parent / "test_bloated.xlsx"
 wb.save(out)
 print(f"Test workbook created: {out} ({out.stat().st_size / 1024:.1f} KB)")
