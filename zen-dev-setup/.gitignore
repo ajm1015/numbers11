@@ -1,0 +1,5 @@
+.DS_Store
+*.swp
+*.swo
+*~
+nvim/.config/nvim/lazy-lock.json

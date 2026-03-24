@@ -1,0 +1,65 @@
+# Brewfile — Zen Development Environment
+# Install: brew bundle install --file=Brewfile
+
+# Core CLI
+brew "jq"                     # JSON processing
+brew "ripgrep"                # Fast search (rg)
+brew "fd"                     # Fast find
+brew "fzf"                    # Fuzzy finder
+brew "eza"                    # Modern ls
+brew "bat"                    # Better cat
+brew "git-delta"              # Better git diff
+brew "zoxide"                 # Smart cd (z)
+brew "starship"               # Prompt
+brew "bash"                   # Modern bash for scripts
+
+# System & Monitoring
+brew "btop"                   # System monitor
+brew "fastfetch"              # System info
+brew "nmap"                   # Network scanner
+
+# File Management
+brew "yazi"                   # Terminal file manager
+brew "midnight-commander"     # Classic file manager
+
+# Development
+brew "neovim"                 # Editor
+brew "node@20"                # Node.js LTS
+brew "python@3.11"            # Python runtime
+
+# Containers
+brew "docker"                 # Container runtime
+brew "docker-compose"         # Multi-container orchestration
+
+# AI
+brew "ollama"                 # Local LLM runtime
+
+# Networking
+brew "tailscale"              # VPN mesh
+
+# Dotfile Management
+brew "stow"                   # Symlink manager
+
+# Terminal
+cask "ghostty"                # GPU-accelerated terminal
+
+# Editor
+cask "cursor"                 # AI-first code editor
+
+# Productivity
+cask "raycast"                # Launcher + scripts
+
+# Browser
+cask "brave-browser@nightly"  # Privacy-focused browser
+
+# Fonts
+cask "font-jetbrains-mono"
+cask "font-jetbrains-mono-nerd-font"
+cask "font-fira-code-nerd-font"
+
+# Cursor Extensions
+vscode "anthropic.claude-code"
+vscode "anysphere.remote-ssh"
+vscode "github.vscode-pull-request-github"
+vscode "ms-vscode.makefile-tools"
+vscode "ms-vscode.powershell"

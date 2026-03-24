@@ -15,7 +15,7 @@ fi
 export PATH="$HOME/.local/bin:$PATH"
 
 # Bash dev environment scripts
-export PATH="$HOME/Documents/GitHub/bash-dev-env/bin:$PATH"
+[[ -d "$HOME/Documents/GitHub/bash-dev-env/bin" ]] && export PATH="$HOME/Documents/GitHub/bash-dev-env/bin:$PATH"
 
 # Node global packages
 export PATH="$HOME/.npm-global/bin:$PATH"
@@ -183,29 +183,6 @@ ccx() {
 # Claude Code for autonomous operations (careful with this)
 alias cc-auto='claude --dangerously-skip-permissions'
 
-# Local AI quick query
-ai() {
-    local query="$*"
-    curl -s http://localhost:8080/v1/chat/completions \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"model\": \"local\",
-            \"messages\": [{\"role\": \"user\", \"content\": \"$query\"}],
-            \"max_tokens\": 500
-        }" 2>/dev/null | jq -r '.choices[0].message.content // "Error: AI router not running"'
-}
-
-# Explain clipboard content
-ai-explain() {
-    local content=$(pbpaste)
-    curl -s http://localhost:8080/v1/chat/completions \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"model\": \"auto\",
-            \"messages\": [{\"role\": \"user\", \"content\": \"Explain this concisely:\n\n$content\"}],
-            \"max_tokens\": 1000
-        }" 2>/dev/null | jq -r '.choices[0].message.content // "Error: AI router not running"'
-}
 
 # ============================================================================
 # Aliases - Intune/Kandji Workflow
@@ -262,38 +239,6 @@ EOF
     echo "Edit CLAUDE.md to add project context for Claude Code"
 }
 
-# Quick git commit with AI-generated message
-gcommit() {
-    local diff=$(git diff --cached)
-    if [[ -z "$diff" ]]; then
-        echo "No staged changes"
-        return 1
-    fi
-    
-    echo "Generating commit message..."
-    local message=$(echo "$diff" | head -c 3000 | curl -s http://localhost:8080/v1/chat/completions \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"model\": \"local\",
-            \"messages\": [{\"role\": \"user\", \"content\": \"Generate a concise git commit message (max 72 chars first line) for this diff. Only output the message, no explanation:\n\n$diff\"}],
-            \"max_tokens\": 100
-        }" 2>/dev/null | jq -r '.choices[0].message.content')
-    
-    if [[ -z "$message" || "$message" == "null" ]]; then
-        echo "Failed to generate message. AI router may not be running."
-        return 1
-    fi
-    
-    echo "Suggested message:"
-    echo "$message"
-    echo ""
-    read "confirm?Use this message? [y/N] "
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        git commit -m "$message"
-    else
-        echo "Aborted"
-    fi
-}
 
 # ============================================================================
 # Functions - System

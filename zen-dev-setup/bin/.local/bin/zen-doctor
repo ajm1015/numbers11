@@ -1,0 +1,14 @@
+#!/bin/bash
+# Zen Doctor — quick health check for your dev environment
+# Locates the verify script relative to this symlink's target
+
+REAL_PATH="$(readlink -f "$0" 2>/dev/null || python3 -c "import os; print(os.path.realpath('$0'))")"
+REPO_ROOT="$(cd "$(dirname "$REAL_PATH")/../../.." && pwd)"
+
+if [[ -f "$REPO_ROOT/scripts/04-verify.sh" ]]; then
+  exec bash "$REPO_ROOT/scripts/04-verify.sh"
+else
+  echo "Error: Could not locate verify script."
+  echo "Expected: $REPO_ROOT/scripts/04-verify.sh"
+  exit 1
+fi
