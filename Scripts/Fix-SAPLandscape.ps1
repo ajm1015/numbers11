@@ -17,7 +17,7 @@ if ($serverReachable) {
     Write-Host "    OK: $ServerXml exists and is reachable" -ForegroundColor Green
 } else {
     Write-Host "    FAIL: $ServerXml not found or not reachable" -ForegroundColor Red
-    $Issues += "Server XML unreachable — check network/DFS/permissions"
+    $Issues += "Server XML unreachable - check network/DFS/permissions"
 }
 
 # --- 2. Registry - native 64-bit hive ---
@@ -46,12 +46,12 @@ $wowVal = try { (Get-ItemProperty -Path $RegWow -Name $ValName -ErrorAction Stop
 if (-not $wowVal) {
     Write-Host "    OK: no 32-bit landscape value (clean)" -ForegroundColor Green
 } elseif ($wowVal -eq $ServerXml) {
-    Write-Host "    STALE: value matches but 32-bit hive is legacy — removing" -ForegroundColor DarkYellow
+    Write-Host "    STALE: value matches but 32-bit hive is legacy - removing" -ForegroundColor DarkYellow
     Remove-ItemProperty -Path $RegWow -Name $ValName -ErrorAction SilentlyContinue
     Write-Host "    FIXED: removed 32-bit landscape registry value" -ForegroundColor Green
     $Fixed += "Removed legacy WOW6432Node landscape value"
 } else {
-    Write-Host "    STALE: $ValName = $wowVal — removing" -ForegroundColor DarkYellow
+    Write-Host "    STALE: $ValName = $wowVal - removing" -ForegroundColor DarkYellow
     Remove-ItemProperty -Path $RegWow -Name $ValName -ErrorAction SilentlyContinue
     Write-Host "    FIXED: removed stale 32-bit landscape registry value" -ForegroundColor Green
     $Fixed += "Removed stale WOW6432Node landscape value"
@@ -66,7 +66,7 @@ if (Test-Path $userXml) {
     if ($content -match [regex]::Escape($ServerXml)) {
         Write-Host "    OK: references server XML" -ForegroundColor Green
     } else {
-        Write-Host "    STALE: does not reference $ServerXml — deleting for regeneration" -ForegroundColor Red
+        Write-Host "    STALE: does not reference $ServerXml - deleting for regeneration" -ForegroundColor Red
         Remove-Item $userXml -Force
         Write-Host "    FIXED: removed stale per-user landscape XML" -ForegroundColor Green
         $Fixed += "Deleted stale per-user SAPUILandscape.xml (will regenerate on next launch)"
@@ -98,12 +98,12 @@ $x86Sap = Join-Path ${env:ProgramFiles(x86)} 'SAP\FrontEnd\SAPgui'
 $x64Sap = Join-Path $env:ProgramFiles 'SAP\FrontEnd\SAPgui'
 
 if ((Test-Path $x86Sap) -and (Test-Path $x64Sap)) {
-    Write-Host "    WARNING: both x86 and x64 SAPgui dirs exist — leftover 32-bit files" -ForegroundColor Red
-    $Issues += "Orphaned 32-bit SAPgui folder at $x86Sap — may confuse shortcuts/COM registration"
+    Write-Host "    WARNING: both x86 and x64 SAPgui dirs exist - leftover 32-bit files" -ForegroundColor Red
+    $Issues += "Orphaned 32-bit SAPgui folder at $x86Sap - may confuse shortcuts/COM registration"
 } elseif (Test-Path $x64Sap) {
     Write-Host "    OK: only 64-bit install present" -ForegroundColor Green
 } elseif (Test-Path $x86Sap) {
-    Write-Host "    WRONG: only 32-bit install found — 64-bit install may have failed" -ForegroundColor Red
+    Write-Host "    WRONG: only 32-bit install found - 64-bit install may have failed" -ForegroundColor Red
     $Issues += "No 64-bit SAPgui folder found"
 } else {
     Write-Host "    MISSING: no SAPgui folder found at all" -ForegroundColor Red
@@ -129,7 +129,7 @@ if ($sapEntries) {
         $ver  = if ($entry.DisplayVersion) { $entry.DisplayVersion } else { 'unknown' }
         $loc  = if ($entry.InstallLocation) { $entry.InstallLocation } else { 'N/A' }
         $color = if ($arch -eq 'x86') { 'Red' } else { 'Green' }
-        Write-Host "    $($entry.DisplayName) — v$ver ($arch)" -ForegroundColor $color
+        Write-Host "    $($entry.DisplayName) - v$ver ($arch)" -ForegroundColor $color
         Write-Host "      Install: $loc" -ForegroundColor DarkGray
         if ($arch -eq 'x86') {
             $Issues += "32-bit SAP component installed: $($entry.DisplayName) v$ver"
@@ -193,7 +193,7 @@ if ($sapProcs) {
         $color = if ($isX86) { 'DarkYellow' } else { 'Green' }
         Write-Host "    $($p.Name) (PID $($p.Id)): $path" -ForegroundColor $color
         if ($isX86) {
-            $Issues += "$($p.Name) running from x86 path — may need restart after fix"
+            $Issues += "$($p.Name) running from x86 path - may need restart after fix"
         }
     }
 } else {
@@ -244,13 +244,13 @@ if ($serverReachable) {
                     }
                     $tcp.Close()
                 } catch {
-                    Write-Host "    FAIL: $key — $($_.Exception.Message)" -ForegroundColor Red
+                    Write-Host "    FAIL: $key - $($_.Exception.Message)" -ForegroundColor Red
                     $Issues += "SAP server $key connection error"
                 }
             }
         }
     } catch {
-        Write-Host "    ERROR: failed to parse landscape XML — $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "    ERROR: failed to parse landscape XML - $($_.Exception.Message)" -ForegroundColor Red
         $Issues += "Could not parse server landscape XML for connectivity test"
     }
 } else {
