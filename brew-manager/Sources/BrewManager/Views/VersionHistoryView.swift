@@ -100,8 +100,17 @@ struct VersionHistoryView: View {
         Group {
             if let diff = vm.diffContent {
                 ScrollView {
-                    DiffContentView(diff: diff)
-                        .padding(12)
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let entry = vm.selectedEntry {
+                            DiffSummaryCard(entry: entry)
+                        }
+                        DisclosureGroup("Show raw diff") {
+                            DiffContentView(diff: diff)
+                        }
+                        .foregroundStyle(theme.textSecondary)
+                        .font(.caption)
+                    }
+                    .padding(12)
                 }
                 .background(theme.surface)
             } else if vm.selectedEntry != nil {
@@ -169,6 +178,81 @@ struct DiffContentView: View {
             return theme.danger.opacity(0.1)
         }
         return .clear
+    }
+}
+
+// MARK: - Diff Summary Card
+
+struct DiffSummaryCard: View {
+    let entry: VersionEntry
+    @Environment(\.theme) var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if entry.addedPackages.isEmpty && entry.removedPackages.isEmpty {
+                Text("Initial Brewfile")
+                    .font(.callout)
+                    .foregroundStyle(theme.textSecondary)
+            } else {
+                HStack(spacing: 8) {
+                    if !entry.addedPackages.isEmpty {
+                        Text("+\(entry.addedPackages.count)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(theme.success)
+                    }
+                    if !entry.removedPackages.isEmpty {
+                        Text("-\(entry.removedPackages.count)")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(theme.danger)
+                    }
+                }
+
+                if !entry.addedPackages.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Added")
+                            .font(.caption2)
+                            .foregroundStyle(theme.success)
+                        FlowLayout(spacing: 6) {
+                            ForEach(entry.addedPackages, id: \.self) { name in
+                                Text(name)
+                                    .font(.caption)
+                                    .foregroundStyle(theme.success)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(theme.success.opacity(0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                        }
+                    }
+                }
+
+                if !entry.removedPackages.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Removed")
+                            .font(.caption2)
+                            .foregroundStyle(theme.danger)
+                        FlowLayout(spacing: 6) {
+                            ForEach(entry.removedPackages, id: \.self) { name in
+                                Text(name)
+                                    .font(.caption)
+                                    .foregroundStyle(theme.danger)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(theme.danger.opacity(0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.background)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.border, lineWidth: 1))
     }
 }
 

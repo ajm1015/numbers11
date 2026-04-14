@@ -41,6 +41,13 @@ struct SearchView: View {
             }
         }
         .background(theme.background)
+        .onKeyPress(.escape) {
+            if !vm.query.isEmpty {
+                vm.clear()
+                return .handled
+            }
+            return .ignored
+        }
         .alert("Error", isPresented: .init(
             get: { packageListVM.error != nil },
             set: { if !$0 { packageListVM.dismissError() } }

@@ -50,9 +50,23 @@ struct ContentView: View {
 
             Spacer()
 
-            // Compact theme switcher at bottom of sidebar
+            // Compact theme switcher + declarative mode at bottom of sidebar
             VStack(spacing: 6) {
                 Divider()
+
+                Toggle("Declarative Mode", isOn: $packageListVM.declarativeMode)
+                    .toggleStyle(.switch)
+                    .font(.caption)
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.horizontal, 4)
+                    .onChange(of: packageListVM.declarativeMode) { _, enabled in
+                        if enabled {
+                            Task { await packageListVM.enableDeclarativeMode() }
+                        } else {
+                            packageListVM.pendingBrewfile = nil
+                        }
+                    }
+
                 HStack(spacing: 4) {
                     ForEach(AppTheme.allCases) { t in
                         Button {

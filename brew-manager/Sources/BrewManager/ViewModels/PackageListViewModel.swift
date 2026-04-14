@@ -6,6 +6,7 @@ final class PackageListViewModel: ObservableObject {
     @Published var installedPackages: [BrewPackage] = []
     @Published var outdatedPackages: [OutdatedResult] = []
     @Published var selectedPackage: BrewPackage?
+    @Published var selectedPackages: Set<BrewPackage> = []
     @Published var filterText = ""
     @Published var filterType: PackageTypeFilter = .all
     @Published var isLoading = false
@@ -19,6 +20,20 @@ final class PackageListViewModel: ObservableObject {
     /// Confirmation dialog state for uninstall
     @Published var showUninstallConfirm = false
     @Published var pendingUninstall: BrewPackage?
+    /// Bulk uninstall confirmation
+    @Published var showBulkUninstallConfirm = false
+    @Published var pendingBulkUninstall: [BrewPackage] = []
+
+    // MARK: - Declarative Mode
+
+    @AppStorage("declarativeMode") var declarativeMode = false
+    @Published var pendingBrewfile: Brewfile?
+    @Published var showApplyConfirm = false
+
+    var pendingChangeCount: Int {
+        guard let pending = pendingBrewfile else { return 0 }
+        return pending.entries.count
+    }
 
     enum PackageTypeFilter: String, CaseIterable {
         case all = "All"
@@ -59,11 +74,41 @@ final class PackageListViewModel: ObservableObject {
 
     // MARK: - Actions
 
+    @Published var isCachedData = false
+
     func loadPackages() async {
         isLoading = true
         error = nil
-        defer { isLoading = false }
 
+        // Phase 1: Show cached Brewfile entries instantly
+        if installedPackages.isEmpty {
+            do {
+                let brewfile = try await GitService.shared.readBrewfile()
+                let cached = brewfile.entries.compactMap { entry -> BrewPackage? in
+                    guard entry.type != .tap else { return nil }
+                    let pkgType: PackageType = entry.type == .cask ? .cask : .formula
+                    return BrewPackage(
+                        name: entry.name,
+                        type: pkgType,
+                        installedVersion: nil,
+                        latestVersion: nil,
+                        description: nil,
+                        homepage: nil,
+                        pinned: false,
+                        outdated: false,
+                        dependencies: []
+                    )
+                }
+                if !cached.isEmpty {
+                    self.installedPackages = cached
+                    self.isCachedData = true
+                }
+            } catch {
+                // No Brewfile yet -- fall through to spinner
+            }
+        }
+
+        // Phase 2: Load live data
         do {
             async let installed = BrewService.shared.listInstalled()
             async let outdated = BrewService.shared.listOutdated()
@@ -92,9 +137,12 @@ final class PackageListViewModel: ObservableObject {
                 return pkg
             }
             self.outdatedPackages = outdatedResult
+            self.isCachedData = false
         } catch {
             self.error = error.localizedDescription
         }
+
+        isLoading = false
     }
 
     func refresh() async {
@@ -102,6 +150,10 @@ final class PackageListViewModel: ObservableObject {
     }
 
     func install(name: String, type: PackageType) async {
+        if declarativeMode {
+            await declarativeInstall(name: name, type: type)
+            return
+        }
         activeOperation = "Installing \(name)..."
         error = nil
 
@@ -119,6 +171,10 @@ final class PackageListViewModel: ObservableObject {
     }
 
     func uninstall(_ package: BrewPackage) async {
+        if declarativeMode {
+            await declarativeUninstall(package)
+            return
+        }
         activeOperation = "Uninstalling \(package.name)..."
         error = nil
 
@@ -214,6 +270,123 @@ final class PackageListViewModel: ObservableObject {
         pendingUninstall = nil
         showUninstallConfirm = false
         await uninstall(package)
+    }
+
+    // MARK: - Bulk Operations
+
+    func requestBulkUninstall(_ packages: [BrewPackage]) {
+        pendingBulkUninstall = packages.sorted { $0.name < $1.name }
+        showBulkUninstallConfirm = true
+    }
+
+    func confirmBulkUninstall() async {
+        let packages = pendingBulkUninstall
+        pendingBulkUninstall = []
+        showBulkUninstallConfirm = false
+        await bulkUninstall(packages)
+    }
+
+    func bulkUninstall(_ packages: [BrewPackage]) async {
+        error = nil
+        for (index, pkg) in packages.enumerated() {
+            activeOperation = "Uninstalling \(index + 1)/\(packages.count): \(pkg.name)..."
+            do {
+                try await BrewService.shared.uninstall(name: pkg.name, type: pkg.type)
+            } catch {
+                self.error = "Failed to uninstall \(pkg.name): \(error.localizedDescription)"
+                activeOperation = nil
+                return
+            }
+        }
+        selectedPackages.removeAll()
+        selectedPackage = nil
+        activeOperation = "Refreshing package list..."
+        await loadPackages()
+        activeOperation = nil
+        showSuccess("Uninstalled \(packages.count) packages")
+        await snapshotBrewfile(message: "Bulk uninstall \(packages.count) packages")
+    }
+
+    func bulkUpgrade(_ packages: [BrewPackage]) async {
+        error = nil
+        for (index, pkg) in packages.enumerated() {
+            activeOperation = "Upgrading \(index + 1)/\(packages.count): \(pkg.name)..."
+            do {
+                try await BrewService.shared.upgrade(name: pkg.name, type: pkg.type)
+            } catch {
+                self.error = "Failed to upgrade \(pkg.name): \(error.localizedDescription)"
+                activeOperation = nil
+                return
+            }
+        }
+        activeOperation = "Refreshing package list..."
+        await loadPackages()
+        activeOperation = nil
+        showSuccess("Upgraded \(packages.count) packages")
+        await snapshotBrewfile(message: "Bulk upgrade \(packages.count) packages")
+    }
+
+    // MARK: - Declarative Mode Actions
+
+    func enableDeclarativeMode() async {
+        activeOperation = "Exporting current system state..."
+        do {
+            let brewfile = try await BrewService.shared.dumpBrewfile()
+            try await GitService.shared.writeBrewfile(brewfile, message: "Export system state for declarative mode")
+            pendingBrewfile = nil
+            activeOperation = nil
+            showSuccess("Declarative mode enabled")
+        } catch {
+            activeOperation = nil
+            self.error = "Failed to export Brewfile: \(error.localizedDescription)"
+            declarativeMode = false
+        }
+    }
+
+    func declarativeInstall(name: String, type: PackageType) async {
+        do {
+            var brewfile = try await GitService.shared.readBrewfile()
+            let entryType: BrewfileEntryType = type == .cask ? .cask : .brew
+            let newEntry = BrewfileEntry(type: entryType, name: name, options: [])
+            guard !brewfile.entries.contains(where: { $0.name == name && $0.type == entryType }) else { return }
+            brewfile.entries.append(newEntry)
+            pendingBrewfile = brewfile
+            showSuccess("Added \(name) to pending changes")
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func declarativeUninstall(_ package: BrewPackage) async {
+        do {
+            var brewfile = try await GitService.shared.readBrewfile()
+            let entryType: BrewfileEntryType = package.type == .cask ? .cask : .brew
+            brewfile.entries.removeAll { $0.name == package.name && $0.type == entryType }
+            pendingBrewfile = brewfile
+            showSuccess("Removed \(package.name) from pending changes")
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func applyPendingChanges() async {
+        guard let pending = pendingBrewfile else { return }
+        activeOperation = "Applying Brewfile changes..."
+        error = nil
+
+        do {
+            try await GitService.shared.writeBrewfile(pending, message: "Declarative mode: apply changes")
+            let brewfilePath = await GitService.shared.brewfilePath
+            try await BrewService.shared.applyBrewfile(at: brewfilePath)
+            pendingBrewfile = nil
+            activeOperation = "Refreshing package list..."
+            await loadPackages()
+            activeOperation = nil
+            showSuccess("Brewfile applied successfully")
+        } catch {
+            activeOperation = nil
+            self.error = "Failed to apply Brewfile: \(error.localizedDescription)"
+        }
     }
 
     func importBrewfile(from path: String) async {

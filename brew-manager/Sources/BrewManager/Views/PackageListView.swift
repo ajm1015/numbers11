@@ -3,6 +3,7 @@ import SwiftUI
 struct PackageListView: View {
     @EnvironmentObject var vm: PackageListViewModel
     @Environment(\.theme) var theme
+    @FocusState private var filterFocused: Bool
 
     var body: some View {
         HSplitView {
@@ -39,6 +40,11 @@ struct PackageListView: View {
         } message: {
             Text(vm.error ?? "")
         }
+        .background {
+            Button("") { filterFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .hidden()
+        }
         .confirmationDialog(
             "Uninstall \(vm.pendingUninstall?.name ?? "")?",
             isPresented: $vm.showUninstallConfirm,
@@ -53,6 +59,30 @@ struct PackageListView: View {
         } message: {
             Text("This will remove \(vm.pendingUninstall?.name ?? "") from your system.")
         }
+        .confirmationDialog(
+            "Apply Brewfile Changes?",
+            isPresented: $vm.showApplyConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Apply") {
+                Task { await vm.applyPendingChanges() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will converge your system to match the Brewfile. Packages not in the Brewfile will be removed.")
+        }
+        .confirmationDialog(
+            "Uninstall \(vm.pendingBulkUninstall.count) packages?",
+            isPresented: $vm.showBulkUninstallConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Uninstall All", role: .destructive) {
+                Task { await vm.confirmBulkUninstall() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will remove: \(vm.pendingBulkUninstall.map(\.name).sorted().joined(separator: ", "))")
+        }
     }
 
     // MARK: - Toolbar
@@ -65,6 +95,7 @@ struct PackageListView: View {
                 TextField("Filter packages...", text: $vm.filterText)
                     .textFieldStyle(.plain)
                     .foregroundStyle(theme.text)
+                    .focused($filterFocused)
                 if !vm.filterText.isEmpty {
                     Button {
                         vm.filterText = ""
@@ -124,17 +155,21 @@ struct PackageListView: View {
     // MARK: - Package List
 
     private var packageList: some View {
-        List(vm.filteredPackages, selection: $vm.selectedPackage) { package in
-            PackageRow(package: package)
+        List(vm.filteredPackages, selection: $vm.selectedPackages) { package in
+            PackageRow(package: package, isCached: vm.isCachedData)
                 .tag(package)
                 .listRowBackground(
-                    vm.selectedPackage == package
+                    vm.selectedPackages.contains(package)
                         ? theme.surfaceHover.opacity(0.8)
                         : Color.clear
                 )
                 .contextMenu {
                     packageContextMenu(for: package)
                 }
+        }
+        .onChange(of: vm.selectedPackages) { oldValue, newValue in
+            let added = newValue.subtracting(oldValue)
+            vm.selectedPackage = added.first ?? newValue.first
         }
         .listStyle(.inset(alternatesRowBackgrounds: false))
         .scrollContentBackground(.hidden)
@@ -151,13 +186,39 @@ struct PackageListView: View {
             }
         }
         .disabled(vm.activeOperation != nil)
+        .onKeyPress(.escape) {
+            if !vm.filterText.isEmpty {
+                vm.filterText = ""
+                return .handled
+            } else if vm.selectedPackage != nil {
+                vm.selectedPackage = nil
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.delete) {
+            if let pkg = vm.selectedPackage {
+                vm.requestUninstall(pkg)
+                return .handled
+            }
+            return .ignored
+        }
+        .onKeyPress(.return) {
+            if vm.selectedPackage != nil {
+                // Package already shown in detail pane
+                return .handled
+            }
+            return .ignored
+        }
     }
 
     // MARK: - Detail Pane
 
     @ViewBuilder
     private var detailPane: some View {
-        if let selected = vm.selectedPackage {
+        if vm.selectedPackages.count > 1 {
+            BulkActionsView(packages: Array(vm.selectedPackages))
+        } else if let selected = vm.selectedPackage {
             PackageDetailView(package: selected)
         } else {
             VStack(spacing: 12) {
@@ -179,7 +240,27 @@ struct PackageListView: View {
 
     @ViewBuilder
     private var statusBar: some View {
-        if let operation = vm.activeOperation {
+        if vm.declarativeMode && vm.pendingBrewfile != nil {
+            Divider().overlay(theme.border)
+            HStack(spacing: 8) {
+                Image(systemName: "doc.badge.gearshape")
+                    .foregroundStyle(theme.warning)
+                Text("Pending changes")
+                    .font(.caption)
+                    .foregroundStyle(theme.textSecondary)
+                Spacer()
+                Button("Apply Changes") {
+                    vm.showApplyConfirm = true
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(theme.accent)
+                .controlSize(.small)
+                .disabled(vm.activeOperation != nil)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(theme.surface)
+        } else if let operation = vm.activeOperation {
             Divider().overlay(theme.border)
             HStack(spacing: 8) {
                 ProgressView()
@@ -238,6 +319,7 @@ struct PackageListView: View {
 
 struct PackageRow: View {
     let package: BrewPackage
+    var isCached = false
     @Environment(\.theme) var theme
 
     var body: some View {
@@ -275,6 +357,14 @@ struct PackageRow: View {
                         .font(.caption)
                         .monospacedDigit()
                         .foregroundStyle(theme.textSecondary)
+                } else if isCached {
+                    Text("cached")
+                        .font(.caption2)
+                        .foregroundStyle(theme.textSecondary.opacity(0.6))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(theme.surface)
+                        .clipShape(Capsule())
                 }
 
                 if package.outdated, let latest = package.latestVersion {
@@ -285,5 +375,52 @@ struct PackageRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Bulk Actions View
+
+struct BulkActionsView: View {
+    let packages: [BrewPackage]
+    @EnvironmentObject var vm: PackageListViewModel
+    @Environment(\.theme) var theme
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "square.stack.3d.up")
+                .font(.system(size: 40))
+                .foregroundStyle(theme.accent)
+
+            Text("\(packages.count) packages selected")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundStyle(theme.text)
+
+            let outdated = packages.filter { $0.outdated }
+
+            HStack(spacing: 12) {
+                if !outdated.isEmpty {
+                    Button {
+                        Task { await vm.bulkUpgrade(outdated) }
+                    } label: {
+                        Label("Upgrade Selected (\(outdated.count))", systemImage: "arrow.up.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.accent)
+                    .disabled(vm.activeOperation != nil)
+                }
+
+                Button(role: .destructive) {
+                    vm.requestBulkUninstall(packages)
+                } label: {
+                    Label("Uninstall Selected", systemImage: "trash")
+                }
+                .buttonStyle(.bordered)
+                .tint(theme.danger)
+                .disabled(vm.activeOperation != nil)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.background)
     }
 }

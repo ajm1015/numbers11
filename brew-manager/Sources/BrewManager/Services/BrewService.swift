@@ -150,6 +150,11 @@ final class BrewService: ObservableObject {
         _ = try await runner.brewOrThrow("bundle", "install", "--file=\(path)")
     }
 
+    func applyBrewfile(at path: String) async throws {
+        try validateBrewfilePath(path)
+        _ = try await runner.brewOrThrow("bundle", "install", "--cleanup", "--file=\(path)")
+    }
+
     func checkBrewfile(at path: String) async throws -> Bool {
         try validateBrewfilePath(path)
         let result = try await runner.brew("bundle", "check", "--file=\(path)")
