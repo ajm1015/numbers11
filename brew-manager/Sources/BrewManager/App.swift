@@ -18,11 +18,6 @@ struct BrewManagerApp: App {
             Group {
                 if brewAvailable {
                     ContentView()
-                        .scaleEffect(uiScale)
-                        .frame(
-                            width: 1100 * uiScale,
-                            height: 750 * uiScale
-                        )
                 } else {
                     BrewSetupView {
                         brewAvailable = ProcessRunner.isBrewAvailable

@@ -4,6 +4,7 @@ struct ContentView: View {
     @EnvironmentObject var packageListVM: PackageListViewModel
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.theme) var theme
+    @AppStorage("uiScale") private var uiScale: Double = 1.0
     @State private var selectedTab: SidebarTab = .installed
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
@@ -26,8 +27,10 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
+                .scaleEffect(uiScale, anchor: .topLeading)
         } detail: {
             detailView
+                .scaleEffect(uiScale, anchor: .topLeading)
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 600, minHeight: 400)
