@@ -192,3 +192,41 @@ extension EnvironmentValues {
         set { self[ThemeKey.self] = newValue }
     }
 }
+
+// MARK: - UIScale environment key
+
+private struct UIScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1.0
+}
+
+extension EnvironmentValues {
+    var uiScale: CGFloat {
+        get { self[UIScaleKey.self] }
+        set { self[UIScaleKey.self] = newValue }
+    }
+}
+
+// MARK: - Scaled font helper
+
+extension Font {
+    /// Returns a system font sized at the macOS default point size for `style` multiplied by `scale`.
+    static func scaled(_ style: TextStyle, scale: CGFloat, design: Design = .default) -> Font {
+        let base: CGFloat
+        switch style {
+        case .largeTitle:    base = 26
+        case .title:         base = 22
+        case .title2:        base = 17
+        case .title3:        base = 15
+        case .headline:      base = 13
+        case .body:          base = 13
+        case .callout:       base = 12
+        case .subheadline:   base = 11
+        case .footnote:      base = 10
+        case .caption:       base = 11
+        case .caption2:      base = 10
+        @unknown default:    base = 13
+        }
+        let f = Font.system(size: base * scale, design: design)
+        return style == .headline ? f.weight(.semibold) : f
+    }
+}

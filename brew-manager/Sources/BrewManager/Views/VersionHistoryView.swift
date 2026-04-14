@@ -3,6 +3,7 @@ import SwiftUI
 struct VersionHistoryView: View {
     @StateObject private var vm = VersionHistoryViewModel()
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
     @State private var pendingRestore: VersionEntry?
 
     var body: some View {
@@ -50,18 +51,18 @@ struct VersionHistoryView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.background)
             } else if vm.entries.isEmpty {
-                VStack(spacing: 12) {
+                VStack(spacing: 12 * uiScale) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 40))
+                        .font(.system(size: 40 * uiScale))
                         .foregroundStyle(theme.textSecondary.opacity(0.5))
                     Text("No History")
-                        .font(.headline)
+                        .font(.scaled(.headline, scale: uiScale))
                         .foregroundStyle(theme.textSecondary)
                     Text("Package changes will appear here once you start managing packages through BrewManager.")
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                         .foregroundStyle(theme.textSecondary.opacity(0.7))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 20 * uiScale)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.background)
@@ -100,7 +101,7 @@ struct VersionHistoryView: View {
         Group {
             if let diff = vm.diffContent {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12 * uiScale) {
                         if let entry = vm.selectedEntry {
                             DiffSummaryCard(entry: entry)
                         }
@@ -108,9 +109,9 @@ struct VersionHistoryView: View {
                             DiffContentView(diff: diff)
                         }
                         .foregroundStyle(theme.textSecondary)
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                     }
-                    .padding(12)
+                    .padding(12 * uiScale)
                 }
                 .background(theme.surface)
             } else if vm.selectedEntry != nil {
@@ -119,15 +120,15 @@ struct VersionHistoryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(theme.background)
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 8 * uiScale) {
                     Image(systemName: "doc.text")
-                        .font(.system(size: 40))
+                        .font(.system(size: 40 * uiScale))
                         .foregroundStyle(theme.textSecondary.opacity(0.5))
                     Text("Select a commit")
-                        .font(.headline)
+                        .font(.scaled(.headline, scale: uiScale))
                         .foregroundStyle(theme.textSecondary)
                     Text("Choose a commit to view the Brewfile diff")
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                         .foregroundStyle(theme.textSecondary.opacity(0.7))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,17 +143,18 @@ struct VersionHistoryView: View {
 struct DiffContentView: View {
     let diff: String
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(diff.components(separatedBy: .newlines).enumerated()), id: \.offset) { _, line in
                 Text(line)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.scaled(.caption, scale: uiScale, design: .monospaced))
                     .foregroundStyle(colorForLine(line))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
+                    .padding(.horizontal, 4 * uiScale)
+                    .padding(.vertical, 1 * uiScale)
                     .background(backgroundForLine(line))
             }
         }
@@ -186,41 +188,42 @@ struct DiffContentView: View {
 struct DiffSummaryCard: View {
     let entry: VersionEntry
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
             if entry.addedPackages.isEmpty && entry.removedPackages.isEmpty {
                 Text("Initial Brewfile")
-                    .font(.callout)
+                    .font(.scaled(.callout, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 8 * uiScale) {
                     if !entry.addedPackages.isEmpty {
                         Text("+\(entry.addedPackages.count)")
-                            .font(.caption)
+                            .font(.scaled(.caption, scale: uiScale))
                             .fontWeight(.semibold)
                             .foregroundStyle(theme.success)
                     }
                     if !entry.removedPackages.isEmpty {
                         Text("-\(entry.removedPackages.count)")
-                            .font(.caption)
+                            .font(.scaled(.caption, scale: uiScale))
                             .fontWeight(.semibold)
                             .foregroundStyle(theme.danger)
                     }
                 }
 
                 if !entry.addedPackages.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 4 * uiScale) {
                         Text("Added")
-                            .font(.caption2)
+                            .font(.scaled(.caption2, scale: uiScale))
                             .foregroundStyle(theme.success)
-                        FlowLayout(spacing: 6) {
+                        FlowLayout(spacing: 6 * uiScale) {
                             ForEach(entry.addedPackages, id: \.self) { name in
                                 Text(name)
-                                    .font(.caption)
+                                    .font(.scaled(.caption, scale: uiScale))
                                     .foregroundStyle(theme.success)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 8 * uiScale)
+                                    .padding(.vertical, 3 * uiScale)
                                     .background(theme.success.opacity(0.15))
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                             }
@@ -229,17 +232,17 @@ struct DiffSummaryCard: View {
                 }
 
                 if !entry.removedPackages.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 4 * uiScale) {
                         Text("Removed")
-                            .font(.caption2)
+                            .font(.scaled(.caption2, scale: uiScale))
                             .foregroundStyle(theme.danger)
-                        FlowLayout(spacing: 6) {
+                        FlowLayout(spacing: 6 * uiScale) {
                             ForEach(entry.removedPackages, id: \.self) { name in
                                 Text(name)
-                                    .font(.caption)
+                                    .font(.scaled(.caption, scale: uiScale))
                                     .foregroundStyle(theme.danger)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 8 * uiScale)
+                                    .padding(.vertical, 3 * uiScale)
                                     .background(theme.danger.opacity(0.15))
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                             }
@@ -248,7 +251,7 @@ struct DiffSummaryCard: View {
                 }
             }
         }
-        .padding(12)
+        .padding(12 * uiScale)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.background)
         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -261,36 +264,38 @@ struct DiffSummaryCard: View {
 struct CommitRow: View {
     let entry: VersionEntry
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 4 * uiScale) {
             Text(entry.message)
+                .font(.scaled(.body, scale: uiScale))
                 .fontWeight(.medium)
                 .foregroundStyle(theme.text)
                 .lineLimit(2)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * uiScale) {
                 Text(entry.shortHash)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.scaled(.caption, scale: uiScale, design: .monospaced))
                     .foregroundStyle(theme.accent)
 
                 Text(entry.date, style: .relative)
-                    .font(.caption)
+                    .font(.scaled(.caption, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
 
                 if !entry.addedPackages.isEmpty {
                     Label("+\(entry.addedPackages.count)", systemImage: "plus.circle")
-                        .font(.caption2)
+                        .font(.scaled(.caption2, scale: uiScale))
                         .foregroundStyle(theme.success)
                 }
 
                 if !entry.removedPackages.isEmpty {
                     Label("-\(entry.removedPackages.count)", systemImage: "minus.circle")
-                        .font(.caption2)
+                        .font(.scaled(.caption2, scale: uiScale))
                         .foregroundStyle(theme.danger)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 4 * uiScale)
     }
 }

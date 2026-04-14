@@ -30,6 +30,7 @@ struct BrewManagerApp: App {
             .environmentObject(packageListVM)
             .environmentObject(themeManager)
             .environment(\.theme, themeManager.colors)
+            .environment(\.uiScale, CGFloat(uiScale))
             .background(themeManager.colors.background)
             .preferredColorScheme(.dark)
         }

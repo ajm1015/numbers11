@@ -3,6 +3,7 @@ import SwiftUI
 struct PackageListView: View {
     @EnvironmentObject var vm: PackageListViewModel
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
     @FocusState private var filterFocused: Bool
 
     var body: some View {
@@ -88,7 +89,7 @@ struct PackageListView: View {
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 12 * uiScale) {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(theme.textSecondary)
@@ -106,7 +107,7 @@ struct PackageListView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(6)
+            .padding(6 * uiScale)
             .background(theme.surface)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(theme.border, lineWidth: 1))
@@ -122,7 +123,7 @@ struct PackageListView: View {
             Spacer()
 
             let counts = vm.packageCounts
-            HStack(spacing: 16) {
+            HStack(spacing: 16 * uiScale) {
                 Label("\(counts.formulae)", systemImage: "terminal")
                     .foregroundStyle(theme.textSecondary)
                     .help("Formulae")
@@ -135,7 +136,7 @@ struct PackageListView: View {
                         .help("Outdated")
                 }
             }
-            .font(.caption)
+            .font(.scaled(.caption, scale: uiScale))
 
             if vm.outdatedPackages.count > 0 {
                 Button("Upgrade All") {
@@ -147,8 +148,8 @@ struct PackageListView: View {
                 .disabled(vm.activeOperation != nil)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12 * uiScale)
+        .padding(.vertical, 8 * uiScale)
         .background(theme.surface)
     }
 
@@ -221,15 +222,15 @@ struct PackageListView: View {
         } else if let selected = vm.selectedPackage {
             PackageDetailView(package: selected)
         } else {
-            VStack(spacing: 12) {
+            VStack(spacing: 12 * uiScale) {
                 Image(systemName: "shippingbox")
-                    .font(.system(size: 40))
+                    .font(.system(size: 40 * uiScale))
                     .foregroundStyle(theme.textSecondary.opacity(0.5))
                 Text("Select a package")
-                    .font(.headline)
+                    .font(.scaled(.headline, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
                 Text("Choose a package from the list to view details")
-                    .font(.caption)
+                    .font(.scaled(.caption, scale: uiScale))
                     .foregroundStyle(theme.textSecondary.opacity(0.7))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -242,11 +243,11 @@ struct PackageListView: View {
     private var statusBar: some View {
         if vm.declarativeMode && vm.pendingBrewfile != nil {
             Divider().overlay(theme.border)
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * uiScale) {
                 Image(systemName: "doc.badge.gearshape")
                     .foregroundStyle(theme.warning)
                 Text("Pending changes")
-                    .font(.caption)
+                    .font(.scaled(.caption, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
                 Button("Apply Changes") {
@@ -257,35 +258,35 @@ struct PackageListView: View {
                 .controlSize(.small)
                 .disabled(vm.activeOperation != nil)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12 * uiScale)
+            .padding(.vertical, 6 * uiScale)
             .background(theme.surface)
         } else if let operation = vm.activeOperation {
             Divider().overlay(theme.border)
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * uiScale) {
                 ProgressView()
                     .controlSize(.small)
                     .tint(theme.accent)
                 Text(operation)
-                    .font(.caption)
+                    .font(.scaled(.caption, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12 * uiScale)
+            .padding(.vertical, 6 * uiScale)
             .background(theme.surface)
         } else if let success = vm.successMessage {
             Divider().overlay(theme.border)
-            HStack(spacing: 6) {
+            HStack(spacing: 6 * uiScale) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(theme.success)
                 Text(success)
-                    .font(.caption)
+                    .font(.scaled(.caption, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12 * uiScale)
+            .padding(.vertical, 6 * uiScale)
             .background(theme.surface)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
@@ -321,29 +322,31 @@ struct PackageRow: View {
     let package: BrewPackage
     var isCached = false
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 8 * uiScale) {
             Image(systemName: package.type == .formula ? "terminal" : "macwindow")
-                .frame(width: 16)
+                .frame(width: 16 * uiScale)
                 .foregroundStyle(package.type == .formula ? theme.formula : theme.cask)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 2 * uiScale) {
+                HStack(spacing: 6 * uiScale) {
                     Text(package.name)
+                        .font(.scaled(.body, scale: uiScale))
                         .fontWeight(.medium)
                         .foregroundStyle(theme.text)
 
                     if package.pinned {
                         Image(systemName: "pin.fill")
-                            .font(.caption2)
+                            .font(.scaled(.caption2, scale: uiScale))
                             .foregroundStyle(theme.warning)
                     }
                 }
 
                 if let desc = package.description {
                     Text(desc)
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(1)
                 }
@@ -351,30 +354,30 @@ struct PackageRow: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 2 * uiScale) {
                 if let version = package.installedVersion {
                     Text(version)
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                         .monospacedDigit()
                         .foregroundStyle(theme.textSecondary)
                 } else if isCached {
                     Text("cached")
-                        .font(.caption2)
+                        .font(.scaled(.caption2, scale: uiScale))
                         .foregroundStyle(theme.textSecondary.opacity(0.6))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
+                        .padding(.horizontal, 4 * uiScale)
+                        .padding(.vertical, 1 * uiScale)
                         .background(theme.surface)
                         .clipShape(Capsule())
                 }
 
                 if package.outdated, let latest = package.latestVersion {
                     Text("\(latest) available")
-                        .font(.caption2)
+                        .font(.scaled(.caption2, scale: uiScale))
                         .foregroundStyle(theme.warning)
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 2 * uiScale)
     }
 }
 
@@ -384,21 +387,22 @@ struct BulkActionsView: View {
     let packages: [BrewPackage]
     @EnvironmentObject var vm: PackageListViewModel
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 20 * uiScale) {
             Image(systemName: "square.stack.3d.up")
-                .font(.system(size: 40))
+                .font(.system(size: 40 * uiScale))
                 .foregroundStyle(theme.accent)
 
             Text("\(packages.count) packages selected")
-                .font(.title2)
+                .font(.scaled(.title2, scale: uiScale))
                 .fontWeight(.bold)
                 .foregroundStyle(theme.text)
 
             let outdated = packages.filter { $0.outdated }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 12 * uiScale) {
                 if !outdated.isEmpty {
                     Button {
                         Task { await vm.bulkUpgrade(outdated) }
