@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SearchView: View {
-    @StateObject private var vm = SearchViewModel()
+    @StateObject private var viewModel = SearchViewModel()
     @EnvironmentObject var packageListVM: PackageListViewModel
     @Environment(\.theme) var theme
     @Environment(\.uiScale) var uiScale
@@ -43,8 +43,8 @@ struct SearchView: View {
         }
         .background(theme.background)
         .onKeyPress(.escape) {
-            if !vm.query.isEmpty {
-                vm.clear()
+            if !viewModel.query.isEmpty {
+                viewModel.clear()
                 return .handled
             }
             return .ignored
@@ -66,21 +66,21 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(theme.textSecondary)
 
-            TextField("Search Homebrew packages...", text: $vm.query)
+            TextField("Search Homebrew packages...", text: $viewModel.query)
                 .textFieldStyle(.plain)
                 .foregroundStyle(theme.text)
-                .onSubmit { vm.search() }
-                .onChange(of: vm.query) { vm.search() }
+                .onSubmit { viewModel.search() }
+                .onChange(of: viewModel.query) { viewModel.search() }
 
-            if vm.isSearching {
+            if viewModel.isSearching {
                 ProgressView()
                     .controlSize(.small)
                     .tint(theme.accent)
             }
 
-            if !vm.query.isEmpty {
+            if !viewModel.query.isEmpty {
                 Button {
-                    vm.clear()
+                    viewModel.clear()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(theme.textSecondary)
@@ -96,18 +96,18 @@ struct SearchView: View {
 
     private var resultsList: some View {
         Group {
-            if vm.results.isEmpty && !vm.query.isEmpty && !vm.isSearching {
+            if viewModel.results.isEmpty && !viewModel.query.isEmpty && !viewModel.isSearching {
                 VStack(spacing: 8 * uiScale) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 26 * uiScale))
                         .foregroundStyle(theme.textSecondary)
-                    Text("No packages found matching \"\(vm.query)\"")
+                    Text("No packages found matching \"\(viewModel.query)\"")
                         .font(.scaled(.body, scale: uiScale))
                         .foregroundStyle(theme.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.background)
-            } else if vm.results.isEmpty {
+            } else if viewModel.results.isEmpty {
                 VStack(spacing: 8 * uiScale) {
                     Image(systemName: "shippingbox")
                         .font(.system(size: 26 * uiScale))
@@ -122,7 +122,7 @@ struct SearchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.background)
             } else {
-                List(vm.results) { package in
+                List(viewModel.results) { package in
                     SearchResultRow(
                         package: package,
                         isInstalled: packageListVM.installedPackages.contains { $0.name == package.name && $0.type == package.type },

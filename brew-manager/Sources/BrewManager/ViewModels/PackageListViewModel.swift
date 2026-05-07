@@ -116,8 +116,8 @@ final class PackageListViewModel: ObservableObject {
             let (installedResult, outdatedResult) = try await (installed, outdated)
 
             var outdatedMap: [String: OutdatedResult] = [:]
-            for o in outdatedResult {
-                outdatedMap[o.name] = o
+            for outdatedItem in outdatedResult {
+                outdatedMap[outdatedItem.name] = outdatedItem
             }
 
             self.installedPackages = installedResult.map { pkg in

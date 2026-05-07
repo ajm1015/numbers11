@@ -2,7 +2,7 @@ import SwiftUI
 
 struct PackageDetailView: View {
     let package: BrewPackage
-    @EnvironmentObject var vm: PackageListViewModel
+    @EnvironmentObject var viewModel: PackageListViewModel
     @Environment(\.theme) var theme
     @Environment(\.uiScale) var uiScale
 
@@ -148,18 +148,18 @@ struct PackageDetailView: View {
             HStack(spacing: 8 * uiScale) {
                 if package.outdated {
                     Button {
-                        Task { await vm.upgrade(package) }
+                        Task { await viewModel.upgrade(package) }
                     } label: {
                         Label("Upgrade", systemImage: "arrow.up.circle")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(theme.accent)
-                    .disabled(vm.activeOperation != nil)
+                    .disabled(viewModel.activeOperation != nil)
                 }
 
                 if package.type == .formula {
                     Button {
-                        Task { await vm.togglePin(package) }
+                        Task { await viewModel.togglePin(package) }
                     } label: {
                         Label(
                             package.pinned ? "Unpin" : "Pin Version",
@@ -168,17 +168,17 @@ struct PackageDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(theme.warning)
-                    .disabled(vm.activeOperation != nil)
+                    .disabled(viewModel.activeOperation != nil)
                 }
 
                 Button(role: .destructive) {
-                    vm.requestUninstall(package)
+                    viewModel.requestUninstall(package)
                 } label: {
                     Label("Uninstall", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
                 .tint(theme.danger)
-                .disabled(vm.activeOperation != nil)
+                .disabled(viewModel.activeOperation != nil)
             }
         }
     }
