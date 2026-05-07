@@ -60,7 +60,7 @@ final class BrewfileParserTests: XCTestCase {
             BrewfileEntry(type: .tap, name: "homebrew/cask-fonts", options: []),
             BrewfileEntry(type: .brew, name: "jq", options: []),
             BrewfileEntry(type: .brew, name: "ripgrep", options: []),
-            BrewfileEntry(type: .cask, name: "ghostty", options: []),
+            BrewfileEntry(type: .cask, name: "ghostty", options: [])
         ]
 
         let original = Brewfile(entries: entries)
@@ -77,7 +77,7 @@ final class BrewfileParserTests: XCTestCase {
             BrewfileEntry(type: .brew, name: "zoxide", options: []),
             BrewfileEntry(type: .cask, name: "ghostty", options: []),
             BrewfileEntry(type: .tap, name: "homebrew/cask-fonts", options: []),
-            BrewfileEntry(type: .brew, name: "jq", options: []),
+            BrewfileEntry(type: .brew, name: "jq", options: [])
         ]
 
         let brewfile = Brewfile(entries: entries)

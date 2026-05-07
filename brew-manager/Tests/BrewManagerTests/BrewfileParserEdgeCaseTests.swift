@@ -110,7 +110,7 @@ final class BrewfileParserEdgeCaseTests: XCTestCase {
             BrewfileEntry(type: .brew, name: "jq", options: []),
             BrewfileEntry(type: .brew, name: "fd", options: []),
             BrewfileEntry(type: .cask, name: "ghostty", options: []),
-            BrewfileEntry(type: .cask, name: "cursor", options: []),
+            BrewfileEntry(type: .cask, name: "cursor", options: [])
         ]
 
         let original = Brewfile(entries: entries)

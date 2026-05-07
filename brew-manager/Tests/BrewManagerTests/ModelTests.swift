@@ -93,7 +93,7 @@ final class ModelTests: XCTestCase {
             BrewfileEntry(type: .tap, name: "homebrew/core", options: []),
             BrewfileEntry(type: .brew, name: "jq", options: []),
             BrewfileEntry(type: .brew, name: "fd", options: []),
-            BrewfileEntry(type: .cask, name: "ghostty", options: []),
+            BrewfileEntry(type: .cask, name: "ghostty", options: [])
         ])
 
         XCTAssertEqual(brewfile.taps.count, 1)
@@ -109,7 +109,7 @@ final class ModelTests: XCTestCase {
     func testBrewfileSerializeSingleType() {
         let brewfile = Brewfile(entries: [
             BrewfileEntry(type: .brew, name: "zoxide", options: []),
-            BrewfileEntry(type: .brew, name: "jq", options: []),
+            BrewfileEntry(type: .brew, name: "jq", options: [])
         ])
         let serialized = brewfile.serialize()
 

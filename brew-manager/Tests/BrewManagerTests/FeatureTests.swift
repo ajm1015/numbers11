@@ -106,7 +106,7 @@ final class FeatureTests: XCTestCase {
         var brewfile = Brewfile(entries: [
             BrewfileEntry(type: .brew, name: "jq", options: []),
             BrewfileEntry(type: .brew, name: "ripgrep", options: []),
-            BrewfileEntry(type: .cask, name: "firefox", options: []),
+            BrewfileEntry(type: .cask, name: "firefox", options: [])
         ])
 
         // Add an entry
@@ -144,7 +144,7 @@ final class FeatureTests: XCTestCase {
         let entries: [BrewfileEntry] = [
             BrewfileEntry(type: .tap, name: "homebrew/cask", options: []),
             BrewfileEntry(type: .brew, name: "jq", options: []),
-            BrewfileEntry(type: .cask, name: "firefox", options: []),
+            BrewfileEntry(type: .cask, name: "firefox", options: [])
         ]
         let packages = entries.compactMap { entry -> BrewPackage? in
             guard entry.type != .tap else { return nil }
