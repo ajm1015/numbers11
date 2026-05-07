@@ -211,21 +211,20 @@ extension EnvironmentValues {
 extension Font {
     /// Returns a system font sized at the macOS default point size for `style` multiplied by `scale`.
     static func scaled(_ style: TextStyle, scale: CGFloat, design: Design = .default) -> Font {
-        let base: CGFloat
-        switch style {
-        case .largeTitle:    base = 26
-        case .title:         base = 22
-        case .title2:        base = 17
-        case .title3:        base = 15
-        case .headline:      base = 13
-        case .body:          base = 13
-        case .callout:       base = 12
-        case .subheadline:   base = 11
-        case .footnote:      base = 10
-        case .caption:       base = 11
-        case .caption2:      base = 10
-        @unknown default:    base = 13
-        }
+        let baseSizes: [TextStyle: CGFloat] = [
+            .largeTitle: 26,
+            .title: 22,
+            .title2: 17,
+            .title3: 15,
+            .headline: 13,
+            .body: 13,
+            .callout: 12,
+            .subheadline: 11,
+            .footnote: 10,
+            .caption: 11,
+            .caption2: 10
+        ]
+        let base = baseSizes[style] ?? 13
         let font = Font.system(size: base * scale, design: design)
         return style == .headline ? font.weight(.semibold) : font
     }

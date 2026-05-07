@@ -16,7 +16,7 @@ final class PackageListViewModel: ObservableObject {
     @Published var activeOperation: String?
     /// Set when an operation completes successfully
     @Published var successMessage: String?
-    private var successGeneration: UInt64 = 0
+    var successGeneration: UInt64 = 0
     /// Confirmation dialog state for uninstall
     @Published var showUninstallConfirm = false
     @Published var pendingUninstall: BrewPackage?
@@ -65,11 +65,17 @@ final class PackageListViewModel: ObservableObject {
         return result.sorted { $0.name < $1.name }
     }
 
-    var packageCounts: (formulae: Int, casks: Int, outdated: Int) {
+    struct PackageCounts {
+        let formulae: Int
+        let casks: Int
+        let outdated: Int
+    }
+
+    var packageCounts: PackageCounts {
         let formulae = installedPackages.filter { $0.type == .formula }.count
         let casks = installedPackages.filter { $0.type == .cask }.count
         let outdated = installedPackages.filter { $0.outdated }.count
-        return (formulae, casks, outdated)
+        return PackageCounts(formulae: formulae, casks: casks, outdated: outdated)
     }
 
     // MARK: - Actions
@@ -81,32 +87,7 @@ final class PackageListViewModel: ObservableObject {
         error = nil
 
         // Phase 1: Show cached Brewfile entries instantly
-        if installedPackages.isEmpty {
-            do {
-                let brewfile = try await GitService.shared.readBrewfile()
-                let cached = brewfile.entries.compactMap { entry -> BrewPackage? in
-                    guard entry.type != .tap else { return nil }
-                    let pkgType: PackageType = entry.type == .cask ? .cask : .formula
-                    return BrewPackage(
-                        name: entry.name,
-                        type: pkgType,
-                        installedVersion: nil,
-                        latestVersion: nil,
-                        description: nil,
-                        homepage: nil,
-                        pinned: false,
-                        outdated: false,
-                        dependencies: []
-                    )
-                }
-                if !cached.isEmpty {
-                    self.installedPackages = cached
-                    self.isCachedData = true
-                }
-            } catch {
-                // No Brewfile yet -- fall through to spinner
-            }
-        }
+        await loadCachedPackages()
 
         // Phase 2: Load live data
         do {
@@ -272,8 +253,15 @@ final class PackageListViewModel: ObservableObject {
         await uninstall(package)
     }
 
-    // MARK: - Bulk Operations
+    func dismissError() {
+        error = nil
+    }
 
+}
+
+// MARK: - Bulk Operations
+
+extension PackageListViewModel {
     func requestBulkUninstall(_ packages: [BrewPackage]) {
         pendingBulkUninstall = packages.sorted { $0.name < $1.name }
         showBulkUninstallConfirm = true
@@ -325,9 +313,11 @@ final class PackageListViewModel: ObservableObject {
         showSuccess("Upgraded \(packages.count) packages")
         await snapshotBrewfile(message: "Bulk upgrade \(packages.count) packages")
     }
+}
 
-    // MARK: - Declarative Mode Actions
+// MARK: - Declarative Mode Actions
 
+extension PackageListViewModel {
     func enableDeclarativeMode() async {
         activeOperation = "Exporting current system state..."
         do {
@@ -403,33 +393,6 @@ final class PackageListViewModel: ObservableObject {
         } catch {
             activeOperation = nil
             self.error = "Failed to import Brewfile: \(error.localizedDescription)"
-        }
-    }
-
-    func dismissError() {
-        error = nil
-    }
-
-    // MARK: - Private
-
-    private func showSuccess(_ message: String) {
-        successGeneration &+= 1
-        let expectedGeneration = successGeneration
-        successMessage = message
-        Task {
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            if successGeneration == expectedGeneration {
-                successMessage = nil
-            }
-        }
-    }
-
-    private func snapshotBrewfile(message: String) async {
-        do {
-            let brewfile = try await BrewService.shared.dumpBrewfile()
-            try await GitService.shared.writeBrewfile(brewfile, message: message)
-        } catch {
-            print("Brewfile snapshot failed: \(error)")
         }
     }
 }

@@ -155,7 +155,10 @@ struct ThemeSettingsView: View {
                     .font(.scaled(.body, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 16 * uiScale)], spacing: 16 * uiScale) {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 16 * uiScale)],
+                    spacing: 16 * uiScale
+                ) {
                     ForEach(AppTheme.allCases) { appTheme in
                         ThemeCard(
                             theme: appTheme,

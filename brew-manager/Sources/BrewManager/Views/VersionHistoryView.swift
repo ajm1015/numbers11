@@ -34,7 +34,10 @@ struct VersionHistoryView: View {
             }
             Button("Cancel", role: .cancel) { pendingRestore = nil }
         } message: {
-            Text("This will revert your Brewfile to commit \(pendingRestore?.shortHash ?? ""). Your current Brewfile will be replaced.")
+            Text(
+                "This will revert your Brewfile to commit \(pendingRestore?.shortHash ?? "")." +
+                " Your current Brewfile will be replaced."
+            )
         }
     }
 

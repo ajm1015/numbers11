@@ -39,10 +39,8 @@ actor ProcessRunner {
     static let brewSearchPaths = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]
 
     static var isBrewAvailable: Bool {
-        for path in brewSearchPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                return true
-            }
+        for path in brewSearchPaths where FileManager.default.fileExists(atPath: path) {
+            return true
         }
         return false
     }

@@ -125,7 +125,9 @@ struct SearchView: View {
                 List(viewModel.results) { package in
                     SearchResultRow(
                         package: package,
-                        isInstalled: packageListVM.installedPackages.contains { $0.name == package.name && $0.type == package.type },
+                        isInstalled: packageListVM.installedPackages.contains {
+                        $0.name == package.name && $0.type == package.type
+                    },
                         isOperating: packageListVM.activeOperation != nil,
                         onInstall: {
                             Task { await packageListVM.install(name: package.name, type: package.type) }
