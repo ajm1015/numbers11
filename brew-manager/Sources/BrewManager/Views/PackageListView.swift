@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PackageListView: View {
-    @EnvironmentObject var vm: PackageListViewModel
+    @EnvironmentObject var viewModel: PackageListViewModel
     @Environment(\.theme) var theme
     @Environment(\.uiScale) var uiScale
     @FocusState private var filterFocused: Bool
@@ -13,7 +13,7 @@ struct PackageListView: View {
                 toolbar
                 Divider().overlay(theme.border)
 
-                if vm.isLoading && vm.installedPackages.isEmpty {
+                if viewModel.isLoading && viewModel.installedPackages.isEmpty {
                     ProgressView("Loading packages...")
                         .tint(theme.accent)
                         .foregroundStyle(theme.textSecondary)
@@ -34,12 +34,12 @@ struct PackageListView: View {
                 .background(theme.background)
         }
         .alert("Error", isPresented: .init(
-            get: { vm.error != nil },
-            set: { if !$0 { vm.dismissError() } }
+            get: { viewModel.error != nil },
+            set: { if !$0 { viewModel.dismissError() } }
         )) {
-            Button("OK") { vm.dismissError() }
+            Button("OK") { viewModel.dismissError() }
         } message: {
-            Text(vm.error ?? "")
+            Text(viewModel.error ?? "")
         }
         .background {
             Button("") { filterFocused = true }
@@ -47,42 +47,42 @@ struct PackageListView: View {
                 .hidden()
         }
         .confirmationDialog(
-            "Uninstall \(vm.pendingUninstall?.name ?? "")?",
-            isPresented: $vm.showUninstallConfirm,
+            "Uninstall \(viewModel.pendingUninstall?.name ?? "")?",
+            isPresented: $viewModel.showUninstallConfirm,
             titleVisibility: .visible
         ) {
             Button("Uninstall", role: .destructive) {
-                if let pkg = vm.pendingUninstall {
-                    Task { await vm.confirmUninstall(pkg) }
+                if let pkg = viewModel.pendingUninstall {
+                    Task { await viewModel.confirmUninstall(pkg) }
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will remove \(vm.pendingUninstall?.name ?? "") from your system.")
+            Text("This will remove \(viewModel.pendingUninstall?.name ?? "") from your system.")
         }
         .confirmationDialog(
             "Apply Brewfile Changes?",
-            isPresented: $vm.showApplyConfirm,
+            isPresented: $viewModel.showApplyConfirm,
             titleVisibility: .visible
         ) {
             Button("Apply") {
-                Task { await vm.applyPendingChanges() }
+                Task { await viewModel.applyPendingChanges() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will converge your system to match the Brewfile. Packages not in the Brewfile will be removed.")
         }
         .confirmationDialog(
-            "Uninstall \(vm.pendingBulkUninstall.count) packages?",
-            isPresented: $vm.showBulkUninstallConfirm,
+            "Uninstall \(viewModel.pendingBulkUninstall.count) packages?",
+            isPresented: $viewModel.showBulkUninstallConfirm,
             titleVisibility: .visible
         ) {
             Button("Uninstall All", role: .destructive) {
-                Task { await vm.confirmBulkUninstall() }
+                Task { await viewModel.confirmBulkUninstall() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will remove: \(vm.pendingBulkUninstall.map(\.name).sorted().joined(separator: ", "))")
+            Text("This will remove: \(viewModel.pendingBulkUninstall.map(\.name).sorted().joined(separator: ", "))")
         }
     }
 
@@ -93,13 +93,13 @@ struct PackageListView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(theme.textSecondary)
-                TextField("Filter packages...", text: $vm.filterText)
+                TextField("Filter packages...", text: $viewModel.filterText)
                     .textFieldStyle(.plain)
                     .foregroundStyle(theme.text)
                     .focused($filterFocused)
-                if !vm.filterText.isEmpty {
+                if !viewModel.filterText.isEmpty {
                     Button {
-                        vm.filterText = ""
+                        viewModel.filterText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(theme.textSecondary)
@@ -112,7 +112,7 @@ struct PackageListView: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(theme.border, lineWidth: 1))
 
-            Picker("Type", selection: $vm.filterType) {
+            Picker("Type", selection: $viewModel.filterType) {
                 ForEach(PackageListViewModel.PackageTypeFilter.allCases, id: \.self) { filter in
                     Text(filter.rawValue).tag(filter)
                 }
@@ -122,7 +122,7 @@ struct PackageListView: View {
 
             Spacer()
 
-            let counts = vm.packageCounts
+            let counts = viewModel.packageCounts
             HStack(spacing: 16 * uiScale) {
                 Label("\(counts.formulae)", systemImage: "terminal")
                     .foregroundStyle(theme.textSecondary)
@@ -138,14 +138,14 @@ struct PackageListView: View {
             }
             .font(.scaled(.caption, scale: uiScale))
 
-            if vm.outdatedPackages.count > 0 {
+            if viewModel.outdatedPackages.count > 0 {
                 Button("Upgrade All") {
-                    Task { await vm.upgradeAll() }
+                    Task { await viewModel.upgradeAll() }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
                 .controlSize(.small)
-                .disabled(vm.activeOperation != nil)
+                .disabled(viewModel.activeOperation != nil)
             }
         }
         .padding(.horizontal, 12 * uiScale)
@@ -156,11 +156,11 @@ struct PackageListView: View {
     // MARK: - Package List
 
     private var packageList: some View {
-        List(vm.filteredPackages, selection: $vm.selectedPackages) { package in
-            PackageRow(package: package, isCached: vm.isCachedData)
+        List(viewModel.filteredPackages, selection: $viewModel.selectedPackages) { package in
+            PackageRow(package: package, isCached: viewModel.isCachedData)
                 .tag(package)
                 .listRowBackground(
-                    vm.selectedPackages.contains(package)
+                    viewModel.selectedPackages.contains(package)
                         ? theme.surfaceHover.opacity(0.8)
                         : Color.clear
                 )
@@ -168,44 +168,44 @@ struct PackageListView: View {
                     packageContextMenu(for: package)
                 }
         }
-        .onChange(of: vm.selectedPackages) { oldValue, newValue in
+        .onChange(of: viewModel.selectedPackages) { oldValue, newValue in
             let added = newValue.subtracting(oldValue)
-            vm.selectedPackage = added.first ?? newValue.first
+            viewModel.selectedPackage = added.first ?? newValue.first
         }
         .listStyle(.inset(alternatesRowBackgrounds: false))
         .scrollContentBackground(.hidden)
         .background(theme.background)
         .overlay {
-            if vm.filteredPackages.isEmpty && !vm.filterText.isEmpty {
+            if viewModel.filteredPackages.isEmpty && !viewModel.filterText.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.largeTitle)
                         .foregroundStyle(theme.textSecondary)
-                    Text("No results for \"\(vm.filterText)\"")
+                    Text("No results for \"\(viewModel.filterText)\"")
                         .foregroundStyle(theme.textSecondary)
                 }
             }
         }
-        .disabled(vm.activeOperation != nil)
+        .disabled(viewModel.activeOperation != nil)
         .onKeyPress(.escape) {
-            if !vm.filterText.isEmpty {
-                vm.filterText = ""
+            if !viewModel.filterText.isEmpty {
+                viewModel.filterText = ""
                 return .handled
-            } else if vm.selectedPackage != nil {
-                vm.selectedPackage = nil
+            } else if viewModel.selectedPackage != nil {
+                viewModel.selectedPackage = nil
                 return .handled
             }
             return .ignored
         }
         .onKeyPress(.delete) {
-            if let pkg = vm.selectedPackage {
-                vm.requestUninstall(pkg)
+            if let pkg = viewModel.selectedPackage {
+                viewModel.requestUninstall(pkg)
                 return .handled
             }
             return .ignored
         }
         .onKeyPress(.return) {
-            if vm.selectedPackage != nil {
+            if viewModel.selectedPackage != nil {
                 // Package already shown in detail pane
                 return .handled
             }
@@ -217,9 +217,9 @@ struct PackageListView: View {
 
     @ViewBuilder
     private var detailPane: some View {
-        if vm.selectedPackages.count > 1 {
-            BulkActionsView(packages: Array(vm.selectedPackages))
-        } else if let selected = vm.selectedPackage {
+        if viewModel.selectedPackages.count > 1 {
+            BulkActionsView(packages: Array(viewModel.selectedPackages))
+        } else if let selected = viewModel.selectedPackage {
             PackageDetailView(package: selected)
         } else {
             VStack(spacing: 12 * uiScale) {
@@ -241,7 +241,7 @@ struct PackageListView: View {
 
     @ViewBuilder
     private var statusBar: some View {
-        if vm.declarativeMode && vm.pendingBrewfile != nil {
+        if viewModel.declarativeMode && viewModel.pendingBrewfile != nil {
             Divider().overlay(theme.border)
             HStack(spacing: 8 * uiScale) {
                 Image(systemName: "doc.badge.gearshape")
@@ -251,17 +251,17 @@ struct PackageListView: View {
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
                 Button("Apply Changes") {
-                    vm.showApplyConfirm = true
+                    viewModel.showApplyConfirm = true
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent)
                 .controlSize(.small)
-                .disabled(vm.activeOperation != nil)
+                .disabled(viewModel.activeOperation != nil)
             }
             .padding(.horizontal, 12 * uiScale)
             .padding(.vertical, 6 * uiScale)
             .background(theme.surface)
-        } else if let operation = vm.activeOperation {
+        } else if let operation = viewModel.activeOperation {
             Divider().overlay(theme.border)
             HStack(spacing: 8 * uiScale) {
                 ProgressView()
@@ -275,7 +275,7 @@ struct PackageListView: View {
             .padding(.horizontal, 12 * uiScale)
             .padding(.vertical, 6 * uiScale)
             .background(theme.surface)
-        } else if let success = vm.successMessage {
+        } else if let success = viewModel.successMessage {
             Divider().overlay(theme.border)
             HStack(spacing: 6 * uiScale) {
                 Image(systemName: "checkmark.circle.fill")
@@ -298,20 +298,20 @@ struct PackageListView: View {
     private func packageContextMenu(for package: BrewPackage) -> some View {
         if package.outdated {
             Button("Upgrade") {
-                Task { await vm.upgrade(package) }
+                Task { await viewModel.upgrade(package) }
             }
         }
 
         if package.type == .formula {
             Button(package.pinned ? "Unpin" : "Pin") {
-                Task { await vm.togglePin(package) }
+                Task { await viewModel.togglePin(package) }
             }
         }
 
         Divider()
 
         Button("Uninstall", role: .destructive) {
-            vm.requestUninstall(package)
+            viewModel.requestUninstall(package)
         }
     }
 }
@@ -385,7 +385,7 @@ struct PackageRow: View {
 
 struct BulkActionsView: View {
     let packages: [BrewPackage]
-    @EnvironmentObject var vm: PackageListViewModel
+    @EnvironmentObject var viewModel: PackageListViewModel
     @Environment(\.theme) var theme
     @Environment(\.uiScale) var uiScale
 
@@ -405,23 +405,23 @@ struct BulkActionsView: View {
             HStack(spacing: 12 * uiScale) {
                 if !outdated.isEmpty {
                     Button {
-                        Task { await vm.bulkUpgrade(outdated) }
+                        Task { await viewModel.bulkUpgrade(outdated) }
                     } label: {
                         Label("Upgrade Selected (\(outdated.count))", systemImage: "arrow.up.circle")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(theme.accent)
-                    .disabled(vm.activeOperation != nil)
+                    .disabled(viewModel.activeOperation != nil)
                 }
 
                 Button(role: .destructive) {
-                    vm.requestBulkUninstall(packages)
+                    viewModel.requestBulkUninstall(packages)
                 } label: {
                     Label("Uninstall Selected", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
                 .tint(theme.danger)
-                .disabled(vm.activeOperation != nil)
+                .disabled(viewModel.activeOperation != nil)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

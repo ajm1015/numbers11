@@ -35,22 +35,22 @@ final class BrewService: ObservableObject {
 
         var results: [OutdatedResult] = []
 
-        for f in response.formulae {
+        for formula in response.formulae {
             results.append(OutdatedResult(
-                name: f.name,
+                name: formula.name,
                 type: .formula,
-                installedVersion: f.installedVersions.first ?? "?",
-                latestVersion: f.currentVersion,
-                pinned: f.pinned
+                installedVersion: formula.installedVersions.first ?? "?",
+                latestVersion: formula.currentVersion,
+                pinned: formula.pinned
             ))
         }
 
-        for c in response.casks ?? [] {
+        for cask in response.casks ?? [] {
             results.append(OutdatedResult(
-                name: c.name,
+                name: cask.name,
                 type: .cask,
-                installedVersion: c.installedVersions,
-                latestVersion: c.currentVersion,
+                installedVersion: cask.installedVersions,
+                latestVersion: cask.currentVersion,
                 pinned: false
             ))
         }

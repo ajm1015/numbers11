@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VersionHistoryView: View {
-    @StateObject private var vm = VersionHistoryViewModel()
+    @StateObject private var viewModel = VersionHistoryViewModel()
     @Environment(\.theme) var theme
     @Environment(\.uiScale) var uiScale
     @State private var pendingRestore: VersionEntry?
@@ -16,7 +16,7 @@ struct VersionHistoryView: View {
         }
         .background(theme.background)
         .task {
-            await vm.loadHistory()
+            await viewModel.loadHistory()
         }
         .confirmationDialog(
             "Restore Brewfile?",
@@ -28,7 +28,7 @@ struct VersionHistoryView: View {
         ) {
             Button("Restore", role: .destructive) {
                 if let entry = pendingRestore {
-                    Task { await vm.restoreVersion(entry) }
+                    Task { await viewModel.restoreVersion(entry) }
                 }
                 pendingRestore = nil
             }
@@ -42,7 +42,7 @@ struct VersionHistoryView: View {
 
     private var commitList: some View {
         Group {
-            if vm.isLoading && vm.entries.isEmpty {
+            if viewModel.isLoading && viewModel.entries.isEmpty {
                 VStack {
                     ProgressView("Loading history...")
                         .tint(theme.accent)
@@ -50,7 +50,7 @@ struct VersionHistoryView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.background)
-            } else if vm.entries.isEmpty {
+            } else if viewModel.entries.isEmpty {
                 VStack(spacing: 12 * uiScale) {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 40 * uiScale))
@@ -67,18 +67,18 @@ struct VersionHistoryView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme.background)
             } else {
-                List(vm.entries, selection: Binding(
-                    get: { vm.selectedEntry },
+                List(viewModel.entries, selection: Binding(
+                    get: { viewModel.selectedEntry },
                     set: { entry in
                         if let entry {
-                            Task { await vm.loadDiff(for: entry) }
+                            Task { await viewModel.loadDiff(for: entry) }
                         }
                     }
                 )) { entry in
                     CommitRow(entry: entry)
                         .tag(entry.id)
                         .listRowBackground(
-                            vm.selectedEntry?.id == entry.id
+                            viewModel.selectedEntry?.id == entry.id
                                 ? theme.surfaceHover.opacity(0.8)
                                 : Color.clear
                         )
@@ -99,10 +99,10 @@ struct VersionHistoryView: View {
 
     private var diffView: some View {
         Group {
-            if let diff = vm.diffContent {
+            if let diff = viewModel.diffContent {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12 * uiScale) {
-                        if let entry = vm.selectedEntry {
+                        if let entry = viewModel.selectedEntry {
                             DiffSummaryCard(entry: entry)
                         }
                         DisclosureGroup("Show raw diff") {
@@ -114,7 +114,7 @@ struct VersionHistoryView: View {
                     .padding(12 * uiScale)
                 }
                 .background(theme.surface)
-            } else if vm.selectedEntry != nil {
+            } else if viewModel.selectedEntry != nil {
                 ProgressView()
                     .tint(theme.accent)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

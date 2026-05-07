@@ -68,23 +68,23 @@ struct ContentView: View {
                     }
 
                 HStack(spacing: 4 * uiScale) {
-                    ForEach(AppTheme.allCases) { t in
+                    ForEach(AppTheme.allCases) { appTheme in
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                themeManager.current = t
+                                themeManager.current = appTheme
                             }
                         } label: {
                             Circle()
-                                .fill(t.colors.accent)
+                                .fill(appTheme.colors.accent)
                                 .frame(width: 14 * uiScale, height: 14 * uiScale)
                                 .overlay {
-                                    if themeManager.current == t {
+                                    if themeManager.current == appTheme {
                                         Circle().stroke(theme.text, lineWidth: 2)
                                     }
                                 }
                         }
                         .buttonStyle(.plain)
-                        .help(t.rawValue)
+                        .help(appTheme.rawValue)
                     }
                 }
                 .padding(.bottom, 8 * uiScale)
@@ -156,13 +156,13 @@ struct ThemeSettingsView: View {
                     .foregroundStyle(theme.textSecondary)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 16 * uiScale)], spacing: 16 * uiScale) {
-                    ForEach(AppTheme.allCases) { t in
+                    ForEach(AppTheme.allCases) { appTheme in
                         ThemeCard(
-                            theme: t,
-                            isSelected: themeManager.current == t,
+                            theme: appTheme,
+                            isSelected: themeManager.current == appTheme,
                             onSelect: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
-                                    themeManager.current = t
+                                    themeManager.current = appTheme
                                 }
                             }
                         )

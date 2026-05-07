@@ -161,16 +161,16 @@ extension Color {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
-        let r, g, b: Double
+        let red, green, blue: Double
         switch hex.count {
         case 6:
-            r = Double((int >> 16) & 0xFF) / 255.0
-            g = Double((int >> 8) & 0xFF) / 255.0
-            b = Double(int & 0xFF) / 255.0
+            red = Double((int >> 16) & 0xFF) / 255.0
+            green = Double((int >> 8) & 0xFF) / 255.0
+            blue = Double(int & 0xFF) / 255.0
         default:
-            r = 1; g = 1; b = 1
+            red = 1; green = 1; blue = 1
         }
-        self.init(red: r, green: g, blue: b)
+        self.init(red: red, green: green, blue: blue)
     }
 }
 
@@ -226,7 +226,7 @@ extension Font {
         case .caption2:      base = 10
         @unknown default:    base = 13
         }
-        let f = Font.system(size: base * scale, design: design)
-        return style == .headline ? f.weight(.semibold) : f
+        let font = Font.system(size: base * scale, design: design)
+        return style == .headline ? font.weight(.semibold) : font
     }
 }
