@@ -5,6 +5,8 @@ import AppKit
 struct BrewManagerApp: App {
     @StateObject private var packageListVM = PackageListViewModel()
     @StateObject private var themeManager = ThemeManager.shared
+    @AppStorage("uiScale") private var uiScale: Double = 1.0
+    @State private var brewAvailable = true
 
     init() {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -13,12 +15,24 @@ struct BrewManagerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(packageListVM)
-                .environmentObject(themeManager)
-                .environment(\.theme, themeManager.colors)
-                .background(themeManager.colors.background)
-                .preferredColorScheme(.dark)
+            Group {
+                if brewAvailable {
+                    ContentView()
+                } else {
+                    BrewSetupView {
+                        brewAvailable = ProcessRunner.isBrewAvailable
+                    }
+                }
+            }
+            .task {
+                brewAvailable = ProcessRunner.isBrewAvailable
+            }
+            .environmentObject(packageListVM)
+            .environmentObject(themeManager)
+            .environment(\.theme, themeManager.colors)
+            .environment(\.uiScale, CGFloat(uiScale))
+            .background(themeManager.colors.background)
+            .preferredColorScheme(.dark)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -63,17 +77,17 @@ struct BrewManagerApp: App {
 
             CommandGroup(after: .windowSize) {
                 Button("Zoom In") {
-                    adjustScale(by: 0.1)
+                    uiScale = min(1.5, uiScale + 0.05)
                 }
                 .keyboardShortcut("+", modifiers: .command)
 
                 Button("Zoom Out") {
-                    adjustScale(by: -0.1)
+                    uiScale = max(0.75, uiScale - 0.05)
                 }
                 .keyboardShortcut("-", modifiers: .command)
 
                 Button("Reset Zoom") {
-                    resetScale()
+                    uiScale = 1.0
                 }
                 .keyboardShortcut("0", modifiers: .command)
             }
@@ -93,33 +107,5 @@ struct BrewManagerApp: App {
                 await packageListVM.importBrewfile(from: url.path)
             }
         }
-    }
-
-    private func adjustScale(by delta: CGFloat) {
-        guard let window = NSApp.keyWindow else { return }
-        let currentFrame = window.frame
-        let newWidth = max(600, currentFrame.width + (currentFrame.width * delta))
-        let newHeight = max(400, currentFrame.height + (currentFrame.height * delta))
-        let newFrame = NSRect(
-            x: currentFrame.origin.x - (newWidth - currentFrame.width) / 2,
-            y: currentFrame.origin.y - (newHeight - currentFrame.height) / 2,
-            width: newWidth,
-            height: newHeight
-        )
-        window.setFrame(newFrame, display: true, animate: true)
-    }
-
-    private func resetScale() {
-        guard let window = NSApp.keyWindow else { return }
-        let screen = window.screen ?? NSScreen.main!
-        let newWidth: CGFloat = 1100
-        let newHeight: CGFloat = 750
-        let newFrame = NSRect(
-            x: screen.visibleFrame.midX - newWidth / 2,
-            y: screen.visibleFrame.midY - newHeight / 2,
-            width: newWidth,
-            height: newHeight
-        )
-        window.setFrame(newFrame, display: true, animate: true)
     }
 }

@@ -31,7 +31,7 @@ struct Brewfile {
         let grouped: [(BrewfileEntryType, String)] = [
             (.tap, "# Taps"),
             (.brew, "# Formulae"),
-            (.cask, "# Casks"),
+            (.cask, "# Casks")
         ]
 
         for (type, header) in grouped {

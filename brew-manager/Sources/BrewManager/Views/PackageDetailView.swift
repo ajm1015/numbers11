@@ -2,12 +2,13 @@ import SwiftUI
 
 struct PackageDetailView: View {
     let package: BrewPackage
-    @EnvironmentObject var vm: PackageListViewModel
+    @EnvironmentObject var viewModel: PackageListViewModel
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 20 * uiScale) {
                 header
                 Divider().overlay(theme.border)
                 versionSection
@@ -18,7 +19,7 @@ struct PackageDetailView: View {
                 Divider().overlay(theme.border)
                 actionSection
             }
-            .padding(20)
+            .padding(20 * uiScale)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.background)
@@ -27,37 +28,37 @@ struct PackageDetailView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * uiScale) {
             HStack {
                 Image(systemName: package.type == .formula ? "terminal" : "macwindow")
-                    .font(.title)
+                    .font(.scaled(.title, scale: uiScale))
                     .foregroundStyle(package.type == .formula ? theme.formula : theme.cask)
 
                 VStack(alignment: .leading) {
                     Text(package.name)
-                        .font(.title2)
+                        .font(.scaled(.title2, scale: uiScale))
                         .fontWeight(.bold)
                         .foregroundStyle(theme.text)
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: 8 * uiScale) {
                         Text(package.type.rawValue.capitalized)
-                            .font(.caption)
+                            .font(.scaled(.caption, scale: uiScale))
                             .foregroundStyle(theme.textSecondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 6 * uiScale)
+                            .padding(.vertical, 2 * uiScale)
                             .background(theme.surface)
                             .clipShape(Capsule())
                             .overlay(Capsule().stroke(theme.border, lineWidth: 1))
 
                         if package.pinned {
                             Label("Pinned", systemImage: "pin.fill")
-                                .font(.caption)
+                                .font(.scaled(.caption, scale: uiScale))
                                 .foregroundStyle(theme.warning)
                         }
 
                         if package.outdated {
                             Label("Update available", systemImage: "arrow.up.circle")
-                                .font(.caption)
+                                .font(.scaled(.caption, scale: uiScale))
                                 .foregroundStyle(theme.warning)
                         }
                     }
@@ -66,13 +67,14 @@ struct PackageDetailView: View {
 
             if let desc = package.description {
                 Text(desc)
+                    .font(.scaled(.body, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
             }
 
             if let homepage = package.homepage, let url = URL(string: homepage) {
                 Link(destination: url) {
                     Label(homepage, systemImage: "globe")
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                         .foregroundStyle(theme.accent)
                 }
             }
@@ -82,12 +84,12 @@ struct PackageDetailView: View {
     // MARK: - Version
 
     private var versionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * uiScale) {
             Text("Version")
-                .font(.headline)
+                .font(.scaled(.headline, scale: uiScale))
                 .foregroundStyle(theme.text)
 
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+            Grid(alignment: .leading, horizontalSpacing: 16 * uiScale, verticalSpacing: 4 * uiScale) {
                 if let installed = package.installedVersion {
                     GridRow {
                         Text("Installed")
@@ -108,25 +110,25 @@ struct PackageDetailView: View {
                     }
                 }
             }
-            .font(.callout)
+            .font(.scaled(.callout, scale: uiScale))
         }
     }
 
     // MARK: - Dependencies
 
     private var dependencySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * uiScale) {
             Text("Dependencies (\(package.dependencies.count))")
-                .font(.headline)
+                .font(.scaled(.headline, scale: uiScale))
                 .foregroundStyle(theme.text)
 
-            FlowLayout(spacing: 6) {
+            FlowLayout(spacing: 6 * uiScale) {
                 ForEach(package.dependencies, id: \.self) { dep in
                     Text(dep)
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                         .foregroundStyle(theme.textSecondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8 * uiScale)
+                        .padding(.vertical, 4 * uiScale)
                         .background(theme.surface)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(theme.border, lineWidth: 1))
@@ -138,26 +140,26 @@ struct PackageDetailView: View {
     // MARK: - Actions
 
     private var actionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8 * uiScale) {
             Text("Actions")
-                .font(.headline)
+                .font(.scaled(.headline, scale: uiScale))
                 .foregroundStyle(theme.text)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 8 * uiScale) {
                 if package.outdated {
                     Button {
-                        Task { await vm.upgrade(package) }
+                        Task { await viewModel.upgrade(package) }
                     } label: {
                         Label("Upgrade", systemImage: "arrow.up.circle")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(theme.accent)
-                    .disabled(vm.activeOperation != nil)
+                    .disabled(viewModel.activeOperation != nil)
                 }
 
                 if package.type == .formula {
                     Button {
-                        Task { await vm.togglePin(package) }
+                        Task { await viewModel.togglePin(package) }
                     } label: {
                         Label(
                             package.pinned ? "Unpin" : "Pin Version",
@@ -166,69 +168,18 @@ struct PackageDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(theme.warning)
-                    .disabled(vm.activeOperation != nil)
+                    .disabled(viewModel.activeOperation != nil)
                 }
 
                 Button(role: .destructive) {
-                    vm.requestUninstall(package)
+                    viewModel.requestUninstall(package)
                 } label: {
                     Label("Uninstall", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
                 .tint(theme.danger)
-                .disabled(vm.activeOperation != nil)
+                .disabled(viewModel.activeOperation != nil)
             }
         }
-    }
-}
-
-// MARK: - Flow Layout
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = layout(proposal: proposal, subviews: subviews)
-        return result.size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = layout(proposal: proposal, subviews: subviews)
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-                proposal: .unspecified
-            )
-        }
-    }
-
-    private func layout(proposal: ProposedViewSize, subviews: Subviews) -> LayoutResult {
-        let maxWidth = proposal.width ?? .infinity
-        var positions: [CGPoint] = []
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var lineHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > maxWidth && currentX > 0 {
-                currentX = 0
-                currentY += lineHeight + spacing
-                lineHeight = 0
-            }
-            positions.append(CGPoint(x: currentX, y: currentY))
-            lineHeight = max(lineHeight, size.height)
-            currentX += size.width + spacing
-        }
-
-        return LayoutResult(
-            positions: positions,
-            size: CGSize(width: maxWidth, height: currentY + lineHeight)
-        )
-    }
-
-    private struct LayoutResult {
-        let positions: [CGPoint]
-        let size: CGSize
     }
 }

@@ -27,7 +27,7 @@ enum BrewfileParser {
         let typeStrings: [String: BrewfileEntryType] = [
             "tap": .tap,
             "brew": .brew,
-            "cask": .cask,
+            "cask": .cask
         ]
 
         for (prefix, type) in typeStrings {

@@ -4,6 +4,7 @@ struct ContentView: View {
     @EnvironmentObject var packageListVM: PackageListViewModel
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
     @State private var selectedTab: SidebarTab = .installed
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
@@ -30,7 +31,6 @@ struct ContentView: View {
             detailView
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 600, minHeight: 400)
         .task {
             await packageListVM.loadPackages()
         }
@@ -50,32 +50,46 @@ struct ContentView: View {
 
             Spacer()
 
-            // Compact theme switcher at bottom of sidebar
-            VStack(spacing: 6) {
+            // Compact theme switcher + declarative mode at bottom of sidebar
+            VStack(spacing: 6 * uiScale) {
                 Divider()
-                HStack(spacing: 4) {
-                    ForEach(AppTheme.allCases) { t in
+
+                Toggle("Declarative Mode", isOn: $packageListVM.declarativeMode)
+                    .toggleStyle(.switch)
+                    .font(.scaled(.caption, scale: uiScale))
+                    .foregroundStyle(theme.textSecondary)
+                    .padding(.horizontal, 4 * uiScale)
+                    .onChange(of: packageListVM.declarativeMode) { _, enabled in
+                        if enabled {
+                            Task { await packageListVM.enableDeclarativeMode() }
+                        } else {
+                            packageListVM.pendingBrewfile = nil
+                        }
+                    }
+
+                HStack(spacing: 4 * uiScale) {
+                    ForEach(AppTheme.allCases) { appTheme in
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                themeManager.current = t
+                                themeManager.current = appTheme
                             }
                         } label: {
                             Circle()
-                                .fill(t.colors.accent)
-                                .frame(width: 14, height: 14)
+                                .fill(appTheme.colors.accent)
+                                .frame(width: 14 * uiScale, height: 14 * uiScale)
                                 .overlay {
-                                    if themeManager.current == t {
+                                    if themeManager.current == appTheme {
                                         Circle().stroke(theme.text, lineWidth: 2)
                                     }
                                 }
                         }
                         .buttonStyle(.plain)
-                        .help(t.rawValue)
+                        .help(appTheme.rawValue)
                     }
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 8 * uiScale)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 12 * uiScale)
         }
         .background(theme.sidebar)
         .navigationTitle("BrewManager")
@@ -127,33 +141,38 @@ struct ContentView: View {
 struct ThemeSettingsView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.theme) var theme
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 24 * uiScale) {
                 Text("Appearance")
-                    .font(.title2)
+                    .font(.scaled(.title2, scale: uiScale))
                     .fontWeight(.bold)
                     .foregroundStyle(theme.text)
 
                 Text("Choose a theme for BrewManager")
+                    .font(.scaled(.body, scale: uiScale))
                     .foregroundStyle(theme.textSecondary)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 16)], spacing: 16) {
-                    ForEach(AppTheme.allCases) { t in
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 200, maximum: 300), spacing: 16 * uiScale)],
+                    spacing: 16 * uiScale
+                ) {
+                    ForEach(AppTheme.allCases) { appTheme in
                         ThemeCard(
-                            theme: t,
-                            isSelected: themeManager.current == t,
+                            theme: appTheme,
+                            isSelected: themeManager.current == appTheme,
                             onSelect: {
                                 withAnimation(.easeInOut(duration: 0.2)) {
-                                    themeManager.current = t
+                                    themeManager.current = appTheme
                                 }
                             }
                         )
                     }
                 }
             }
-            .padding(24)
+            .padding(24 * uiScale)
         }
         .background(theme.background)
     }
@@ -163,67 +182,68 @@ struct ThemeCard: View {
     let theme: AppTheme
     let isSelected: Bool
     let onSelect: () -> Void
+    @Environment(\.uiScale) var uiScale
 
     var body: some View {
         Button(action: onSelect) {
             VStack(spacing: 0) {
                 // Preview
-                VStack(spacing: 4) {
-                    HStack(spacing: 6) {
+                VStack(spacing: 4 * uiScale) {
+                    HStack(spacing: 6 * uiScale) {
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.formula)
-                            .frame(width: 40, height: 8)
+                            .frame(width: 40 * uiScale, height: 8 * uiScale)
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.textSecondary)
-                            .frame(height: 8)
+                            .frame(height: 8 * uiScale)
                         Spacer()
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.accent)
-                            .frame(width: 30, height: 8)
+                            .frame(width: 30 * uiScale, height: 8 * uiScale)
                     }
-                    HStack(spacing: 6) {
+                    HStack(spacing: 6 * uiScale) {
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.cask)
-                            .frame(width: 40, height: 8)
+                            .frame(width: 40 * uiScale, height: 8 * uiScale)
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.textSecondary)
-                            .frame(height: 8)
+                            .frame(height: 8 * uiScale)
                         Spacer()
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.success)
-                            .frame(width: 30, height: 8)
+                            .frame(width: 30 * uiScale, height: 8 * uiScale)
                     }
-                    HStack(spacing: 6) {
+                    HStack(spacing: 6 * uiScale) {
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.formula)
-                            .frame(width: 40, height: 8)
+                            .frame(width: 40 * uiScale, height: 8 * uiScale)
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.textSecondary)
-                            .frame(height: 8)
+                            .frame(height: 8 * uiScale)
                         Spacer()
                         RoundedRectangle(cornerRadius: 3)
                             .fill(theme.colors.warning)
-                            .frame(width: 30, height: 8)
+                            .frame(width: 30 * uiScale, height: 8 * uiScale)
                     }
                 }
-                .padding(12)
+                .padding(12 * uiScale)
                 .background(theme.colors.surface)
 
                 // Label
                 HStack {
                     Text(theme.rawValue)
-                        .font(.caption)
+                        .font(.scaled(.caption, scale: uiScale))
                         .fontWeight(.medium)
                         .foregroundStyle(theme.colors.text)
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(theme.colors.accent)
-                            .font(.caption)
+                            .font(.scaled(.caption, scale: uiScale))
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 12 * uiScale)
+                .padding(.vertical, 8 * uiScale)
                 .background(theme.colors.background)
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))

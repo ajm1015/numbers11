@@ -10,6 +10,12 @@ actor BrewAPIService {
     private let session: URLSession
     private let decoder: JSONDecoder
 
+    private var cachedFormulae: [FormulaAPIResponse]?
+    private var formulaeCacheTime: Date?
+    private var cachedCasks: [CaskAPIResponse]?
+    private var casksCacheTime: Date?
+    private let cacheTTL: TimeInterval = 3600 // 1 hour
+
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
@@ -17,6 +23,44 @@ actor BrewAPIService {
         session = URLSession(configuration: config)
 
         decoder = JSONDecoder()
+    }
+
+    // MARK: - Cache
+
+    func invalidateCache() {
+        cachedFormulae = nil
+        formulaeCacheTime = nil
+        cachedCasks = nil
+        casksCacheTime = nil
+    }
+
+    private func isCacheValid(for time: Date?) -> Bool {
+        guard let time else { return false }
+        return Date().timeIntervalSince(time) < cacheTTL
+    }
+
+    private func getAllFormulae() async throws -> [FormulaAPIResponse] {
+        if let cached = cachedFormulae, isCacheValid(for: formulaeCacheTime) {
+            return cached
+        }
+        let url = baseURL.appendingPathComponent("formula.json")
+        let (data, _) = try await session.data(from: url)
+        let all = try decoder.decode([FormulaAPIResponse].self, from: data)
+        cachedFormulae = all
+        formulaeCacheTime = Date()
+        return all
+    }
+
+    private func getAllCasks() async throws -> [CaskAPIResponse] {
+        if let cached = cachedCasks, isCacheValid(for: casksCacheTime) {
+            return cached
+        }
+        let url = baseURL.appendingPathComponent("cask.json")
+        let (data, _) = try await session.data(from: url)
+        let all = try decoder.decode([CaskAPIResponse].self, from: data)
+        cachedCasks = all
+        casksCacheTime = Date()
+        return all
     }
 
     // MARK: - Formula
@@ -28,11 +72,7 @@ actor BrewAPIService {
     }
 
     func searchFormulae(query: String) async throws -> [FormulaAPIResponse] {
-        // The API doesn't have a search endpoint — fetch all and filter locally.
-        // Results are cached by URLSession so subsequent calls are fast.
-        let url = baseURL.appendingPathComponent("formula.json")
-        let (data, _) = try await session.data(from: url)
-        let all = try decoder.decode([FormulaAPIResponse].self, from: data)
+        let all = try await getAllFormulae()
         let lowered = query.lowercased()
         return all.filter {
             $0.name.lowercased().contains(lowered)
@@ -49,9 +89,7 @@ actor BrewAPIService {
     }
 
     func searchCasks(query: String) async throws -> [CaskAPIResponse] {
-        let url = baseURL.appendingPathComponent("cask.json")
-        let (data, _) = try await session.data(from: url)
-        let all = try decoder.decode([CaskAPIResponse].self, from: data)
+        let all = try await getAllCasks()
         let lowered = query.lowercased()
         return all.filter {
             $0.token.lowercased().contains(lowered)

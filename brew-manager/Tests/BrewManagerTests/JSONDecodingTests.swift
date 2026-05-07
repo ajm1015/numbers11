@@ -21,9 +21,9 @@ final class JSONDecodingTests: XCTestCase {
             }],
             "casks": []
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8))
         XCTAssertEqual(response.formulae.count, 1)
         XCTAssertEqual(response.casks.count, 0)
 
@@ -53,9 +53,9 @@ final class JSONDecodingTests: XCTestCase {
                 "outdated": false
             }]
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8))
         XCTAssertEqual(response.casks.count, 1)
 
         let pkg = response.casks[0].toBrewPackage()
@@ -78,9 +78,9 @@ final class JSONDecodingTests: XCTestCase {
             }],
             "casks": []
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8))
         let pkg = response.formulae[0].toBrewPackage()
         XCTAssertNil(pkg.installedVersion)
         XCTAssertFalse(pkg.isInstalled)
@@ -100,9 +100,9 @@ final class JSONDecodingTests: XCTestCase {
                 "outdated": false
             }]
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8))
         let pkg = response.casks[0].toBrewPackage()
         XCTAssertNil(pkg.installedVersion)
         XCTAssertFalse(pkg.isInstalled)
@@ -117,9 +117,9 @@ final class JSONDecodingTests: XCTestCase {
             }],
             "casks": []
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8))
         let pkg = response.formulae[0].toBrewPackage()
         XCTAssertEqual(pkg.name, "something")
         XCTAssertNil(pkg.installedVersion)
@@ -143,9 +143,9 @@ final class JSONDecodingTests: XCTestCase {
                 { "token": "cursor", "installed": "0.45" }
             ]
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8))
         XCTAssertEqual(response.formulae.count, 3)
         XCTAssertEqual(response.casks.count, 2)
     }
@@ -164,9 +164,9 @@ final class JSONDecodingTests: XCTestCase {
             }],
             "casks": []
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: Data(json.utf8))
         XCTAssertEqual(response.formulae.count, 1)
         XCTAssertEqual(response.formulae[0].name, "node")
         XCTAssertEqual(response.formulae[0].installedVersions, ["20.0.0"])
@@ -184,9 +184,9 @@ final class JSONDecodingTests: XCTestCase {
                 "current_version": "130.0"
             }]
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: Data(json.utf8))
         XCTAssertEqual(response.casks?.count, 1)
         XCTAssertEqual(response.casks?[0].name, "firefox")
         XCTAssertEqual(response.casks?[0].installedVersions, "129.0")
@@ -199,9 +199,9 @@ final class JSONDecodingTests: XCTestCase {
         {
             "formulae": []
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: Data(json.utf8))
         XCTAssertNil(response.casks)
     }
 
@@ -217,9 +217,9 @@ final class JSONDecodingTests: XCTestCase {
             }],
             "casks": []
         }
-        """.data(using: .utf8)!
+        """
 
-        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: json)
+        let response = try JSONDecoder().decode(BrewOutdatedResponse.self, from: Data(json.utf8))
         XCTAssertTrue(response.formulae[0].pinned)
         XCTAssertEqual(response.formulae[0].pinnedVersion, "3.11.0")
     }
@@ -227,13 +227,13 @@ final class JSONDecodingTests: XCTestCase {
     // MARK: - Invalid JSON
 
     func testDecodeInvalidJSON() {
-        let json = "not json".data(using: .utf8)!
-        XCTAssertThrowsError(try JSONDecoder().decode(BrewInfoResponse.self, from: json))
+        let json = "not json"
+        XCTAssertThrowsError(try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8)))
     }
 
     func testDecodeEmptyObject() {
-        let json = "{}".data(using: .utf8)!
+        let json = "{}"
         // formulae and casks are required fields
-        XCTAssertThrowsError(try JSONDecoder().decode(BrewInfoResponse.self, from: json))
+        XCTAssertThrowsError(try JSONDecoder().decode(BrewInfoResponse.self, from: Data(json.utf8)))
     }
 }

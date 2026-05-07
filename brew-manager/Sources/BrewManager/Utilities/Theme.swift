@@ -161,16 +161,16 @@ extension Color {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
-        let r, g, b: Double
+        let red, green, blue: Double
         switch hex.count {
         case 6:
-            r = Double((int >> 16) & 0xFF) / 255.0
-            g = Double((int >> 8) & 0xFF) / 255.0
-            b = Double(int & 0xFF) / 255.0
+            red = Double((int >> 16) & 0xFF) / 255.0
+            green = Double((int >> 8) & 0xFF) / 255.0
+            blue = Double(int & 0xFF) / 255.0
         default:
-            r = 1; g = 1; b = 1
+            red = 1; green = 1; blue = 1
         }
-        self.init(red: r, green: g, blue: b)
+        self.init(red: red, green: green, blue: blue)
     }
 }
 
@@ -190,5 +190,42 @@ extension EnvironmentValues {
     var theme: ThemeColors {
         get { self[ThemeKey.self] }
         set { self[ThemeKey.self] = newValue }
+    }
+}
+
+// MARK: - UIScale environment key
+
+private struct UIScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1.0
+}
+
+extension EnvironmentValues {
+    var uiScale: CGFloat {
+        get { self[UIScaleKey.self] }
+        set { self[UIScaleKey.self] = newValue }
+    }
+}
+
+// MARK: - Scaled font helper
+
+extension Font {
+    /// Returns a system font sized at the macOS default point size for `style` multiplied by `scale`.
+    static func scaled(_ style: TextStyle, scale: CGFloat, design: Design = .default) -> Font {
+        let baseSizes: [TextStyle: CGFloat] = [
+            .largeTitle: 26,
+            .title: 22,
+            .title2: 17,
+            .title3: 15,
+            .headline: 13,
+            .body: 13,
+            .callout: 12,
+            .subheadline: 11,
+            .footnote: 10,
+            .caption: 11,
+            .caption2: 10
+        ]
+        let base = baseSizes[style] ?? 13
+        let font = Font.system(size: base * scale, design: design)
+        return style == .headline ? font.weight(.semibold) : font
     }
 }

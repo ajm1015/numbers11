@@ -31,10 +31,10 @@ actor GitService {
     // MARK: - Setup
 
     func ensureRepo() async throws {
-        let fm = FileManager.default
+        let fileManager = FileManager.default
 
-        if !fm.fileExists(atPath: repoPath) {
-            try fm.createDirectory(atPath: repoPath, withIntermediateDirectories: true)
+        if !fileManager.fileExists(atPath: repoPath) {
+            try fileManager.createDirectory(atPath: repoPath, withIntermediateDirectories: true)
             _ = try await runner.gitOrThrow("-C", repoPath, "init")
             _ = try await runner.gitOrThrow("-C", repoPath, "checkout", "-b", "main")
 
@@ -99,12 +99,12 @@ actor GitService {
         let lines = output.components(separatedBy: .newlines)
         let chunkSize = 5
 
-        for i in stride(from: 0, to: lines.count - chunkSize + 1, by: chunkSize) {
-            let hash = lines[i]
-            let shortHash = lines[i + 1]
-            let message = lines[i + 2]
-            let author = lines[i + 3]
-            let dateStr = lines[i + 4]
+        for index in stride(from: 0, to: lines.count - chunkSize + 1, by: chunkSize) {
+            let hash = lines[index]
+            let shortHash = lines[index + 1]
+            let message = lines[index + 2]
+            let author = lines[index + 3]
+            let dateStr = lines[index + 4]
 
             let formatter = ISO8601DateFormatter()
             let date = formatter.date(from: dateStr) ?? Date()

@@ -37,8 +37,8 @@ final class SearchViewModel: ObservableObject {
 
                 guard !Task.isCancelled else { return }
 
-                let formulaePackages = formulaeResults.prefix(25).map { $0.toBrewPackage() }
-                let caskPackages = caskResults.prefix(25).map { $0.toBrewPackage() }
+                let formulaePackages = formulaeResults.map { $0.toBrewPackage() }
+                let caskPackages = caskResults.map { $0.toBrewPackage() }
 
                 self.results = formulaePackages + caskPackages
             } catch is CancellationError {
